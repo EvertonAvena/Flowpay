@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
-// Note: Firebase phone auth is used during signup - LoginScreen uses phone + MPIN for existing users
+
 
 const { width } = Dimensions.get('window');
 const CREDENTIALS_KEY = 'flowpay_user_credentials';
