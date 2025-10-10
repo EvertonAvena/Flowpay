@@ -1,4 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import {
     Dimensions,
     SafeAreaView,
@@ -58,17 +59,17 @@ export default function NotificationScreen({ navigation }) {
   const getNotificationIcon = (type) => {
     switch (type) {
       case 'transaction':
-        return '💰';
+        return { name: 'cash', color: '#10B981' };
       case 'summary':
-        return '📊';
+        return { name: 'bar-chart', color: '#3B82F6' };
       case 'reminder':
-        return '⏰';
+        return { name: 'alarm', color: '#F59E0B' };
       case 'security':
-        return '🔒';
+        return { name: 'shield-checkmark', color: '#EF4444' };
       case 'promo':
-        return '🎁';
+        return { name: 'gift', color: '#8B5CF6' };
       default:
-        return '📧';
+        return { name: 'mail', color: '#6B7280' };
     }
   };
 
@@ -104,23 +105,25 @@ export default function NotificationScreen({ navigation }) {
       </LinearGradient>
 
       <ScrollView style={styles.content}>
-        {notifications.map((notification) => (
-          <TouchableOpacity 
-            key={notification.id} 
-            style={[
-              styles.notificationItem,
-              notification.isRead ? styles.readNotification : styles.unreadNotification
-            ]}
-          >
-            <View 
+        {notifications.map((notification) => {
+          const iconData = getNotificationIcon(notification.type);
+          return (
+            <TouchableOpacity 
+              key={notification.id} 
               style={[
-                styles.iconContainer,
-                { backgroundColor: getNotificationColor(notification.type) }
+                styles.notificationItem,
+                notification.isRead ? styles.readNotification : styles.unreadNotification
               ]}
             >
-              <Text style={styles.icon}>{getNotificationIcon(notification.type)}</Text>
-            </View>
-            <View style={styles.notificationContent}>
+              <View 
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: getNotificationColor(notification.type) }
+                ]}
+              >
+                <Ionicons name={iconData.name} size={24} color={iconData.color} />
+              </View>
+              <View style={styles.notificationContent}>
               <View style={styles.notificationHeader}>
                 <Text style={styles.notificationTitle}>{notification.title}</Text>
                 <Text style={styles.notificationTime}>{notification.time}</Text>
@@ -128,12 +131,13 @@ export default function NotificationScreen({ navigation }) {
               <Text style={styles.notificationMessage}>{notification.message}</Text>
             </View>
           </TouchableOpacity>
-        ))}
+        );
+        })}
 
         {/* Empty state for when there are no notifications */}
         {notifications.length === 0 && (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateIcon}>📭</Text>
+            <Ionicons name="notifications-off-outline" size={64} color="#ccc" />
             <Text style={styles.emptyStateTitle}>No Notifications</Text>
             <Text style={styles.emptyStateMessage}>You're all caught up! Check back later for updates.</Text>
           </View>
@@ -212,9 +216,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 15,
   },
-  icon: {
-    fontSize: 24,
-  },
   notificationContent: {
     flex: 1,
   },
@@ -243,15 +244,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: 80,
   },
-  emptyStateIcon: {
-    fontSize: 70,
-    marginBottom: 20,
-  },
   emptyStateTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 10,
+    marginTop: 20,
   },
   emptyStateMessage: {
     fontSize: 16,

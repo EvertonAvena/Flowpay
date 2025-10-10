@@ -1,4 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect, useCallback } from 'react';
 import { CameraView, Camera } from 'expo-camera';
 import { useFocusEffect } from '@react-navigation/native';
@@ -451,6 +452,7 @@ export default function QRScreen({ navigation }) {
 
       <View style={styles.content}>
         {/* Camera Section */}
+
         <View style={styles.cameraSection}>
           <View style={styles.cameraContainer}>
             {isFocused && hasPermission && cameraReady && (
@@ -478,38 +480,40 @@ export default function QRScreen({ navigation }) {
               <View style={[styles.scannerCorner, styles.bottomRight]} />
             </View>
           </View>
-          
+
+          {/* Move action buttons directly below camera */}
+          <View style={[styles.actionButtonsContainerCentered, { marginTop: 12 }]}> 
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => setShowGenerateQR(true)}
+            >
+              <View style={styles.actionButtonIcon}>
+                <Ionicons name="qr-code-outline" size={28} color="white" />
+              </View>
+              <Text style={styles.actionButtonText}>Generate QR</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.actionButton, processingImage && styles.actionButtonDisabled]}
+              onPress={processingImage ? null : showUploadOptions}
+              disabled={processingImage}
+            >
+              <View style={styles.actionButtonIcon}>
+                {processingImage ? (
+                  <Ionicons name="refresh-outline" size={28} color="white" />
+                ) : (
+                  <Ionicons name="cloud-upload-outline" size={28} color="white" />
+                )}
+              </View>
+              <Text style={styles.actionButtonText}>
+                {processingImage ? 'Processing...' : 'Upload QR'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.scanInstructionText}>
             Position QR code within the frame to scan
           </Text>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => setShowGenerateQR(true)}
-          >
-            <View style={styles.actionButtonIcon}>
-              <Text style={styles.actionButtonIconText}>+</Text>
-            </View>
-            <Text style={styles.actionButtonText}>Generate QR</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, processingImage && styles.actionButtonDisabled]}
-            onPress={processingImage ? null : showUploadOptions}
-            disabled={processingImage}
-          >
-            <View style={styles.actionButtonIcon}>
-              <Text style={styles.actionButtonIconText}>
-                {processingImage ? '⟳' : '↑'}
-              </Text>
-            </View>
-            <Text style={styles.actionButtonText}>
-              {processingImage ? 'Processing...' : 'Upload QR'}
-            </Text>
-          </TouchableOpacity>
         </View>
 
         {scanned && (
@@ -916,7 +920,15 @@ const styles = StyleSheet.create({
   actionButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 20,
+    marginBottom: 50,
+  },
+  actionButtonsContainerCentered: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+    marginTop: -98,
+    marginBottom: 0,
   },
   actionButton: {
     alignItems: 'center',

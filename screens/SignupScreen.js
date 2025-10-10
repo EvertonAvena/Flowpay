@@ -145,118 +145,41 @@ export default function SignupScreen({ navigation }) {
     return phone;
   };
 
-  // Send OTP to phone number for verification
+  // Send OTP - Now just skips to form (FREE option - no SMS service)
   const sendOTP = async () => {
     if (!phoneNumber) {
       Alert.alert('Error', 'Please enter your phone number');
       return;
     }
 
-    try {
-      setLoading(true);
-      const formattedPhone = formatPhoneNumber(phoneNumber);
-      
-      console.log('=== SMS SENDING DEBUG ===');
-      console.log('Original phone input:', phoneNumber);
-      console.log('Formatted phone:', formattedPhone);
-      console.log('About to send SMS to:', formattedPhone);
-      
-      // Send OTP via Supabase Auth
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: formattedPhone,
-        options: {
-          channel: 'sms',
-          data: {
-            phone: formattedPhone
+    // Inform user that phone verification is optional
+    Alert.alert(
+      'Phone Verification',
+      'Phone verification via SMS requires a paid service. You can continue without verification for now.',
+      [
+        {
+          text: 'Continue Without Verification',
+          onPress: () => {
+            setShowOtpInput(false);
+            setStep(2);
           }
-        }
-      });
-
-      console.log('Supabase SMS result - error:', error);
-
-      if (error) {
-        console.log('SMS Error Details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        
-        Alert.alert(
-          'Phone Verification Unavailable', 
-          'Unable to send verification code at this time. You can continue without phone verification.',
-          [
-            { 
-              text: 'Continue Without Verification', 
-              onPress: () => {
-                setShowOtpInput(false);
-                setStep(2);
-              }
-            },
-            { text: 'Try Again', style: 'cancel' }
-          ]
-        );
-        return;
-      }
-
-      console.log('SMS sent successfully to:', formattedPhone);
-      setShowOtpInput(true);
-      setResendTimer(60);
-      Alert.alert('OTP Sent', `Verification code sent to ${formattedPhone}`);
-    } catch (error) {
-      console.error('Send OTP error:', error);
-      Alert.alert(
-        'Phone Verification Unavailable', 
-        'Unable to send verification code at this time. You can continue without phone verification.',
-        [
-          { 
-            text: 'Continue Without Verification', 
-            onPress: () => {
-              setShowOtpInput(false);
-              setStep(2);
-            }
-          },
-          { text: 'Try Again', style: 'cancel' }
-        ]
-      );
-    } finally {
-      setLoading(false);
-    }
+        },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
-  // Verify OTP
+  // Verify OTP - Not needed anymore
   const verifyOTP = async () => {
     if (!otp) {
       Alert.alert('Error', 'Please enter the verification code');
       return;
     }
 
-    try {
-      setOtpLoading(true);
-      const formattedPhone = formatPhoneNumber(phoneNumber);
-      
-      // Verify OTP with Supabase
-      const { data, error } = await supabase.auth.verifyOtp({
-        phone: formattedPhone,
-        token: otp,
-        type: 'sms'
-      });
-
-      if (error || !data.user) {
-        Alert.alert('Invalid Code', 'Please check your verification code and try again.');
-        return;
-      }
-
-      // Phone verified, proceed to step 2
-      Alert.alert('Phone Verified!', 'Your phone number has been verified. Please complete your profile.', [
-        { text: 'Continue', onPress: () => setStep(2) }
-      ]);
-    } catch (error) {
-      console.error('Verify OTP error:', error);
-      Alert.alert('Error', 'Verification failed. Please try again.');
-    } finally {
-      setOtpLoading(false);
-    }
+    // Since we don't have real SMS, just proceed
+    Alert.alert('Phone Verified!', 'Your phone number has been noted. Please complete your profile.', [
+      { text: 'Continue', onPress: () => setStep(2) }
+    ]);
   };
 
   // Resend OTP
@@ -452,7 +375,7 @@ export default function SignupScreen({ navigation }) {
                   </View>
 
                   <Text style={styles.phoneHelpText}>
-                    Try SMS verification or skip to continue without verification
+                    Phone verification is optional. You can skip it and complete your signup!
                   </Text>
 
                   <TouchableOpacity 

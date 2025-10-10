@@ -1,5 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -119,6 +120,22 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
+  // Function to get initials from full name
+  const getInitials = (fullname) => {
+    if (!fullname) return 'U';
+    
+    const names = fullname.trim().split(' ');
+    if (names.length === 1) {
+      return names[0].charAt(0).toUpperCase();
+    }
+    
+    // Get first letter of first name and first letter of last name
+    const firstInitial = names[0].charAt(0).toUpperCase();
+    const lastInitial = names[names.length - 1].charAt(0).toUpperCase();
+    
+    return firstInitial + lastInitial;
+  };
+
   // Choose display name
   const displayName = profile?.fullname || profile?.username || profile?.email || 'User';
 
@@ -127,6 +144,7 @@ export default function HomeScreen({ navigation }) {
       source={require('../assets/flowpay_bg.png')}
       style={styles.container}
       resizeMode="cover"
+      imageStyle={{ marginTop: -70 }}
     >
       <StatusBar barStyle="light-content" />
       <View
@@ -139,17 +157,21 @@ export default function HomeScreen({ navigation }) {
             style={styles.logo}
             resizeMode="contain"
           />
-          <View style={styles.userContainer}>
-            <Text style={styles.username}>Username</Text>
-            <TouchableOpacity
-              style={styles.avatarContainer}
-              onPress={handleLogout}
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={handleLogout}
+          >
+            <LinearGradient
+              colors={['#0D7A5F', '#179C7D', '#20B890']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.userIcon}
             >
-              <View style={styles.userIcon}>
-                <Text style={styles.userIconText}>P</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
+              <Text style={styles.userIconText}>
+                {getInitials(profile?.fullname)}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </SafeAreaView>
 
         {/* Balance Section */}
@@ -169,14 +191,14 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.actionButtonsContainer}>
           <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Transfer')}>
             <View style={styles.iconCircle}>
-              <Text style={styles.iconText}>⇄</Text>
+              <Ionicons name="swap-horizontal" size={18} color="white" />
             </View>
             <Text style={styles.actionText}>Transfer</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('PayBills')}>
             <View style={styles.iconCircle}>
-              <Text style={styles.iconText}>🧾</Text>
+              <Ionicons name="receipt" size={18} color="white" />
             </View>
             <Text style={styles.actionText}>Pay Bills</Text>
           </TouchableOpacity>
@@ -225,18 +247,30 @@ export default function HomeScreen({ navigation }) {
             {transactions.length === 0 && (
               <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>No recent transactions.</Text>
             )}
-            {transactions.map((tx, idx) => (
-              <View style={styles.transactionItem} key={idx}>
-                <View style={styles.transactionLeft}>
-                  <View style={[
-                    styles.transactionIcon,
-                    tx.type === 'received' ? styles.receivedIcon : styles.transferIcon
-                  ]}>
-                    <Text style={styles.transactionIconText}>
-                      {tx.type === 'received' ? '💰' : tx.type === 'transfer' ? '🔄' : '$'}
-                    </Text>
-                  </View>
-                  <View>
+            {transactions.map((tx, idx) => {
+              const getTransactionIcon = (type) => {
+                switch(type) {
+                  case 'received':
+                    return { name: 'arrow-down-circle', color: '#10B981' };
+                  case 'transfer':
+                    return { name: 'arrow-up-circle', color: '#EF4444' };
+                  case 'bill':
+                    return { name: 'receipt', color: '#F59E0B' };
+                  default:
+                    return { name: 'swap-horizontal', color: '#6B7280' };
+                }
+              };
+              const iconData = getTransactionIcon(tx.type);
+              return (
+                <View style={styles.transactionItem} key={idx}>
+                  <View style={styles.transactionLeft}>
+                    <View style={[
+                      styles.transactionIcon,
+                      tx.type === 'received' ? styles.receivedIcon : styles.transferIcon
+                    ]}>
+                      <Ionicons name={iconData.name} size={24} color={iconData.color} />
+                    </View>
+                    <View>
                     <Text style={styles.transactionTitle}>
                       {tx.type === 'transfer'
                         ? `Transfer to ${tx.recipient_name || tx.counterparty}`
@@ -258,7 +292,8 @@ export default function HomeScreen({ navigation }) {
                   {Number(tx.amount) >= 0 ? '+' : '-'}{Math.abs(Number(tx.amount)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </Text>
               </View>
-            ))}
+            );
+            })}
             
             {/* Spacer to push content above tab bar */}
             <View style={{ height: 80 }} />
@@ -290,31 +325,20 @@ const styles = StyleSheet.create({
   logo: {
     width: 200,
     height: 100,
-    marginTop: -40,
-    marginLeft: -50,
-  },
-  userContainer: {
-    flexDirection: 'column',
-    alignItems: 'center',
-  },
-  username: {
-    color: '#333',
-    marginBottom: 8,
-    fontSize: 18,
-    fontWeight: '600',
+    marginTop: -70,
+    marginLeft: -60,
   },
   avatarContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
   },
   userIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#00617B',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -325,11 +349,12 @@ const styles = StyleSheet.create({
   },
   userIconText: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 22,
+    fontWeight: 'bold',
   },
   balanceSection: {
     paddingHorizontal: 25,
-    marginTop: 50,
+    marginTop: 20,
     marginBottom: 40,
     alignItems: 'center',
   },
@@ -392,16 +417,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
-  },
-  iconText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  iconImage: {
-    width: 16,
-    height: 16,
-    tintColor: 'white',
   },
   actionText: {
     color: '#333',
@@ -507,9 +522,6 @@ const styles = StyleSheet.create({
   },
   transferIcon: {
     backgroundColor: '#FFE8E8',
-  },
-  transactionIconText: {
-    fontSize: 20,
   },
   transactionTitle: {
     fontSize: 16,

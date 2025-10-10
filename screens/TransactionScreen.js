@@ -8,8 +8,9 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
@@ -56,10 +57,10 @@ export default function TransactionScreen({ navigation }) {
 
   // Helper for icon and color
   const getIcon = (type) => {
-    if (type === 'received') return { icon: '💰', bg: '#e3f7e8' };
-    if (type === 'sent' || type === 'transfer') return { icon: '↗️', bg: '#ffe0e0' };
-    if (type === 'bill') return { icon: '⚡', bg: '#fff2e0' };
-    return { icon: '💸', bg: '#ffe0e0' };
+    if (type === 'received') return { icon: 'arrow-down-circle', bg: '#e3f7e8', color: '#10B981' };
+    if (type === 'sent' || type === 'transfer') return { icon: 'arrow-up-circle', bg: '#ffe0e0', color: '#EF4444' };
+    if (type === 'bill') return { icon: 'receipt', bg: '#fff2e0', color: '#F59E0B' };
+    return { icon: 'swap-horizontal-outline', bg: '#ffe0e0', color: '#EF4444' };
   };
 
   return (
@@ -112,7 +113,7 @@ export default function TransactionScreen({ navigation }) {
 
         {/* Transaction List */}
         {filteredTransactions.map((transaction) => {
-          const { icon, bg } = getIcon(transaction.type);
+          const { icon, bg, color } = getIcon(transaction.type);
           const isIncome = transaction.type === 'received';
           return (
             <TouchableOpacity 
@@ -126,7 +127,7 @@ export default function TransactionScreen({ navigation }) {
                   { backgroundColor: bg }
                 ]}
               >
-                <Text style={styles.icon}>{icon}</Text>
+                <Ionicons name={icon} size={24} color={color} />
               </View>
               <View style={styles.transactionContent}>
                 <View style={styles.transactionInfo}>
@@ -164,7 +165,7 @@ export default function TransactionScreen({ navigation }) {
         {/* Empty state for when there are no transactions */}
         {filteredTransactions.length === 0 && !loading && (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateIcon}>📋</Text>
+            <Ionicons name="document-text-outline" size={64} color="#ccc" />
             <Text style={styles.emptyStateTitle}>No Transactions</Text>
             <Text style={styles.emptyStateMessage}>
               You don't have any {activeTab !== 'all' ? activeTab : ''} transactions yet
@@ -321,9 +322,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 15,
   },
-  icon: {
-    fontSize: 24,
-  },
   transactionContent: {
     flex: 1,
     flexDirection: 'row',
@@ -367,15 +365,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: 60,
   },
-  emptyStateIcon: {
-    fontSize: 70,
-    marginBottom: 20,
-  },
   emptyStateTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 10,
+    marginTop: 20,
   },
   emptyStateMessage: {
     fontSize: 16,

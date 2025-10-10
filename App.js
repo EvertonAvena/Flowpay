@@ -16,6 +16,14 @@ import PayBillsScreen from './screens/PayBillsScreen';
 import SignupScreen from "./screens/SignupScreen";
 import TransferScreen from './screens/TransferScreen';
 import TransferConfirmationScreen from './screens/TransferConfirmationScreen';
+import EditProfileScreen from './screens/EditProfileScreen';
+import MyQRCodeScreen from './screens/MyQRCodeScreen';
+import SettingsScreen from './screens/SettingsScreen';
+import ChangePasswordScreen from './screens/ChangePasswordScreen';
+import TermsAndConditionsScreen from './screens/TermsAndConditionsScreen';
+import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen';
+import HelpScreen from './screens/HelpScreen';
+import SendFeedbackScreen from './screens/SendFeedbackScreen';
 
 const Stack = createStackNavigator();
 const ONBOARDING_COMPLETE_KEY = "flowpay_onboarding_complete";
@@ -65,6 +73,14 @@ export default function App() {
         <Stack.Screen name="Main" component={TabNavigator} />
         <Stack.Screen name="Transfer" component={TransferScreen} />
         <Stack.Screen name="PayBills" component={PayBillsScreen} />
+        <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+        <Stack.Screen name="MyQRCode" component={MyQRCodeScreen} />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+        <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+        <Stack.Screen name="Help" component={HelpScreen} />
+        <Stack.Screen name="SendFeedback" component={SendFeedbackScreen} />
         <Stack.Screen 
           name="TransferConfirmation" 
           component={TransferConfirmationScreen}

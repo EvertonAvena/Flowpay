@@ -1,9 +1,11 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
   Alert,
   Dimensions,
   Image,
+  Linking,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -21,6 +23,22 @@ export default function ProfileScreen({ navigation }) {
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  // Function to get initials from full name
+  const getInitials = (fullname) => {
+    if (!fullname) return 'U';
+    
+    const names = fullname.trim().split(' ');
+    if (names.length === 1) {
+      return names[0].charAt(0).toUpperCase();
+    }
+    
+    // Get first letter of first name and first letter of last name
+    const firstInitial = names[0].charAt(0).toUpperCase();
+    const lastInitial = names[names.length - 1].charAt(0).toUpperCase();
+    
+    return firstInitial + lastInitial;
+  };
 
   const fetchProfile = async () => {
     try {
@@ -44,6 +62,26 @@ export default function ProfileScreen({ navigation }) {
     } catch (error) {
       console.error("Error loading profile:", error);
     }
+  };
+
+  const handleProfileInfo = () => {
+    navigation.navigate('EditProfile');
+  };
+
+  const handleMyQRCodes = () => {
+    navigation.navigate('MyQRCode');
+  };
+
+  const handleSettings = () => {
+    navigation.navigate('Settings');
+  };
+
+  const handleTermsAndConditions = () => {
+    navigation.navigate('TermsAndConditions');
+  };
+
+  const handleHelp = () => {
+    navigation.navigate('Help');
   };
 
   const handleLogout = async () => {
@@ -87,11 +125,16 @@ export default function ProfileScreen({ navigation }) {
         {/* Profile Picture & Basic Info */}
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
-            <Image
-              source={require('../assets/logo.png')}
-              style={styles.avatar}
-              resizeMode="contain"
-            />
+            <LinearGradient
+              colors={['#0D7A5F', '#179C7D', '#20B890']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.initialsCircle}
+            >
+              <Text style={styles.initialsText}>
+                {getInitials(profile?.fullname)}
+              </Text>
+            </LinearGradient>
           </View>
           <Text style={styles.userName}>
             {profile ? profile.fullname : 'User'}
@@ -109,62 +152,114 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.card}>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Full Name</Text>
-              <Text style={styles.infoValue}>{profile ? profile.fullname : '-'}</Text>
+              <Text style={styles.infoValue} numberOfLines={2} ellipsizeMode="tail">
+                {profile ? profile.fullname : '-'}
+              </Text>
             </View>
             
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Username</Text>
-              <Text style={styles.infoValue}>{profile ? profile.username : '-'}</Text>
+              <Text style={styles.infoValue} numberOfLines={2} ellipsizeMode="tail">
+                {profile ? profile.username : '-'}
+              </Text>
             </View>
             
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{profile ? profile.email : '-'}</Text>
+              <Text style={[styles.infoValue, { fontSize: 14 }]} numberOfLines={2} ellipsizeMode="tail">
+                {profile ? profile.email : '-'}
+              </Text>
             </View>
             
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Phone Number</Text>
-              <Text style={styles.infoValue}>{profile ? profile.phone : '-'}</Text>
+              <Text style={styles.infoValue} numberOfLines={2} ellipsizeMode="tail">
+                {profile ? profile.phone : '-'}
+              </Text>
             </View>
             
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Address</Text>
-              <Text style={styles.infoValue}>{profile ? profile.address : '-'}</Text>
+              <Text style={styles.infoValue} numberOfLines={3} ellipsizeMode="tail">
+                {profile ? profile.address : '-'}
+              </Text>
             </View>
             
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Date of Birth</Text>
-              <Text style={styles.infoValue}>{profile ? profile.birthdate : '-'}</Text>
+              <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">
+                {profile ? profile.birthdate : '-'}
+              </Text>
             </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Settings</Text>
+          <Text style={styles.sectionTitle}>Menu</Text>
           
-          <TouchableOpacity style={styles.settingRow}>
-            <Text style={styles.settingText}>Change Password</Text>
-            <Text style={styles.arrowIcon}>›</Text>
+          <TouchableOpacity 
+            style={styles.settingRow}
+            onPress={handleProfileInfo}
+          >
+            <View style={styles.settingLeft}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="person-outline" size={22} color="#179C7D" />
+              </View>
+              <Text style={styles.settingText}>Profile Information</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#999" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.settingRow}>
-            <Text style={styles.settingText}>Notifications</Text>
-            <Text style={styles.arrowIcon}>›</Text>
+          <TouchableOpacity 
+            style={styles.settingRow}
+            onPress={handleMyQRCodes}
+          >
+            <View style={styles.settingLeft}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="qr-code-outline" size={22} color="#179C7D" />
+              </View>
+              <Text style={styles.settingText}>My QR Codes</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#999" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.settingRow}>
-            <Text style={styles.settingText}>Privacy & Security</Text>
-            <Text style={styles.arrowIcon}>›</Text>
+          <TouchableOpacity 
+            style={styles.settingRow}
+            onPress={handleSettings}
+          >
+            <View style={styles.settingLeft}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="settings-outline" size={22} color="#179C7D" />
+              </View>
+              <Text style={styles.settingText}>Settings</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#999" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.settingRow}>
-            <Text style={styles.settingText}>Help & Support</Text>
-            <Text style={styles.arrowIcon}>›</Text>
+          <TouchableOpacity 
+            style={styles.settingRow}
+            onPress={handleTermsAndConditions}
+          >
+            <View style={styles.settingLeft}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="document-text-outline" size={22} color="#179C7D" />
+              </View>
+              <Text style={styles.settingText}>Terms and Conditions</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#999" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.settingRow}>
-            <Text style={styles.settingText}>About</Text>
-            <Text style={styles.arrowIcon}>›</Text>
+          <TouchableOpacity 
+            style={styles.settingRow}
+            onPress={handleHelp}
+          >
+            <View style={styles.settingLeft}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="help-circle-outline" size={22} color="#179C7D" />
+              </View>
+              <Text style={styles.settingText}>Help</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#999" />
           </TouchableOpacity>
         </View>
         
@@ -226,10 +321,18 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 5,
   },
-  avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+  initialsCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#179C7D',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  initialsText: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: 'white',
   },
   userName: {
     fontSize: 22,
@@ -268,18 +371,26 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+    gap: 15,
   },
   infoLabel: {
     fontSize: 16,
     color: '#666',
+    flex: 0.6,
+    paddingTop: 2,
   },
   infoValue: {
     fontSize: 16,
     fontWeight: '500',
     color: '#333',
+    flex: 1,
+    textAlign: 'right',
+    paddingLeft: 10,
+    paddingRight: 10,
   },
   settingRow: {
     flexDirection: 'row',
@@ -289,14 +400,28 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 12,
     marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  settingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#E8F8F5',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   settingText: {
     fontSize: 16,
     color: '#333',
-  },
-  arrowIcon: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#999',
+    fontWeight: '500',
   },
 });

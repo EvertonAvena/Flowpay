@@ -19,17 +19,18 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
+// Note: Firebase phone auth is used during signup - LoginScreen uses phone + MPIN for existing users
 
 const { width } = Dimensions.get('window');
 const CREDENTIALS_KEY = 'flowpay_user_credentials';
 
 export default function LoginScreen({ navigation }) {
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [mpin, setMpin] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
   const [isBiometricSaved, setIsBiometricSaved] = useState(false);
-  const [showMpin, setShowMpin] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [hasAutoFilledCredentials, setHasAutoFilledCredentials] = useState(false);
 
   // Run on initial load
@@ -38,20 +39,20 @@ export default function LoginScreen({ navigation }) {
     loadSavedCredentials();
   }, []);
 
-  // Load saved phone number from previous login/signup
+  // Load saved email from previous login/signup
   const loadSavedCredentials = async () => {
     try {
       const savedCredentialsString = await AsyncStorage.getItem(CREDENTIALS_KEY);
       if (savedCredentialsString) {
         const savedCredentials = JSON.parse(savedCredentialsString);
         
-        // Auto-populate phone number if available
-        if (savedCredentials.phoneNumber) {
-          setPhoneNumber(savedCredentials.phoneNumber);
+        // Auto-populate email if available
+        if (savedCredentials.email) {
+          setEmail(savedCredentials.email);
           setHasAutoFilledCredentials(true);
         }
         
-        console.log('Loaded saved phone number for auto-fill');
+        console.log('Loaded saved email for auto-fill');
       }
     } catch (error) {
       console.error('Error loading saved credentials:', error);
@@ -100,9 +101,9 @@ export default function LoginScreen({ navigation }) {
   // Use the fixed key for saving credentials
   const saveCredentials = async (userData) => {
     try {
-      // Create credentials object for phone auth
+      // Create credentials object for email/password auth
       const credentials = {
-        phoneNumber: phoneNumber,
+        email: email,
         userData: userData,
         isLoggedIn: true,
         timestamp: new Date().toISOString()
@@ -124,51 +125,40 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
-  // Login with phone number and MPIN
-  const loginWithMPIN = async () => {
-    if (!phoneNumber || !mpin) {
-      Alert.alert('Error', 'Please enter your phone number and MPIN');
-      return;
-    }
-
-    if (mpin.length !== 6) {
-      Alert.alert('Error', 'MPIN must be 6 digits');
+  // Login with email and password
+  const loginWithPassword = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter your email and password');
       return;
     }
 
     try {
       setLoading(true);
-      const formattedPhone = formatPhoneNumber(phoneNumber);
       
-      // Get user profile by phone number
-      const { data: profile, error: profileError } = await supabase
-        .from('profile')
-        .select('*')
-        .eq('phone', formattedPhone)
-        .single();
-
-      if (profileError || !profile) {
-        Alert.alert('Login Failed', 'Phone number not found. Please check your number or sign up.');
-        return;
-      }
-
-      // Check MPIN
-      if (profile.mpin !== mpin) {
-        Alert.alert('Login Failed', 'Invalid MPIN. Please try again.');
-        return;
-      }
-
-      // Login successful - sign in with email and a temporary session
+      // Sign in with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: profile.email,
-        password: `TempPass123!${profile.id}` // Use a password that meets requirements
+        email: email,
+        password: password,
       });
 
       if (authError) {
-        // If auth fails, we'll still proceed with the profile data
-        console.log('Auth warning:', authError.message);
+        Alert.alert('Login Failed', authError.message);
+        return;
       }
 
+      // Get user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('profile')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (profileError || !profile) {
+        Alert.alert('Login Failed', 'Could not load user profile.');
+        return;
+      }
+
+      // Save credentials
       await saveCredentials(profile);
 
       // Mark onboarding as complete
@@ -214,15 +204,7 @@ export default function LoginScreen({ navigation }) {
       if (success) {
         const savedCredentials = JSON.parse(savedCredentialsString);
 
-        // For phone auth, we need to get the current session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !session) {
-          Alert.alert('Session Expired', 'Please log in again with your phone number.');
-          return;
-        }
-
-        // Now navigate to home
+        // Navigate directly to home (no Supabase auth session needed)
         navigation.navigate('Main', { screen: 'Home' });
       } else {
         Alert.alert('Authentication Failed', 'Please try again or use your phone number and MPIN to log in');
@@ -254,14 +236,14 @@ export default function LoginScreen({ navigation }) {
 
   // Handle the main login action
   const handleLogin = () => {
-    loginWithMPIN();
+    loginWithPassword();
   };
 
   // Clear saved credentials
   const clearSavedCredentials = async () => {
     try {
       await AsyncStorage.removeItem(CREDENTIALS_KEY);
-      setPhoneNumber('');
+      setEmail('');
       setHasAutoFilledCredentials(false);
       Alert.alert('Cleared', 'Saved login information has been cleared.');
     } catch (error) {
@@ -310,118 +292,81 @@ export default function LoginScreen({ navigation }) {
         </View>
 
         <Text style={styles.subtitle}>
-          Please enter your phone number and MPIN
+          Please enter your email and password
         </Text>
 
         {/* Form */}
         <View style={styles.formContainer}>
-          {/* Phone Number Input */}
+          {/* Email Input */}
           <View style={styles.inputContainer}>
             <View style={styles.labelRow}>
-              <Text style={styles.label}>Phone Number</Text>
-              {phoneNumber && (
+              <Text style={styles.label}>Email</Text>
+              {email && (
                 <TouchableOpacity 
                   style={styles.changeNumberButton}
                   onPress={clearSavedCredentials}
                 >
                   <Ionicons name="swap-horizontal-outline" size={18} color="#1DB89A" />
-                  <Text style={styles.changeNumberText}>Change Number</Text>
+                  <Text style={styles.changeNumberText}>Change Email</Text>
                 </TouchableOpacity>
               )}
             </View>
             <View style={styles.phoneInputContainer}>
-              <Text style={styles.phonePrefix}>+63</Text>
               <TextInput
                 style={[
                   styles.input,
-                  styles.phoneInput,
-                  hasAutoFilledCredentials && phoneNumber && styles.autoFilledInput
+                  styles.emailInput,
+                  hasAutoFilledCredentials && email && styles.autoFilledInput
                 ]}
-                value={phoneNumber}
+                value={email}
                 onChangeText={(text) => {
-                  // Extract only digits from the input
-                  let cleaned = text.replace(/\D/g, '');
-                  
-                  // Remove leading country code if present (63)
-                  if (cleaned.startsWith('63')) {
-                    cleaned = cleaned.substring(2);
-                  }
-                  
-                  // If user types 0 at the start, remove it
-                  if (cleaned.startsWith('0')) {
-                    cleaned = cleaned.substring(1);
-                  }
-                  
-                  // Limit to 10 digits (Philippine mobile number)
-                  cleaned = cleaned.slice(0, 10);
-                  
-                  // If no digits, set empty
-                  if (cleaned.length === 0) {
-                    setPhoneNumber('');
-                    return;
-                  }
-                  
-                  // Format as XXXX XXX XXXX (without +63 since it's in prefix)
-                  let formatted = '';
-                  if (cleaned.length > 0) {
-                    formatted += cleaned.substring(0, 4);
-                  }
-                  if (cleaned.length > 4) {
-                    formatted += ' ' + cleaned.substring(4, 7);
-                  }
-                  if (cleaned.length > 7) {
-                    formatted += ' ' + cleaned.substring(7, 10);
-                  }
-                  
-                  setPhoneNumber(formatted);
-                  
-                  // Reset auto-fill indicator when user starts typing
-                  if (hasAutoFilledCredentials && formatted !== phoneNumber) {
+                  setEmail(text.toLowerCase());
+                  if (hasAutoFilledCredentials) {
                     setHasAutoFilledCredentials(false);
                   }
                 }}
-                placeholder="9123 456 789"
+                placeholder="your@email.com"
                 placeholderTextColor="#AAAAAA"
-                keyboardType="phone-pad"
-                autoComplete="tel"
+                keyboardType="email-address"
+                autoComplete="email"
+                autoCapitalize="none"
               />
-              {phoneNumber && phoneNumber.trim() !== '' && (
+              {email && email.trim() !== '' && (
                 <TouchableOpacity 
                   style={styles.clearPhoneButton}
-                  onPress={() => setPhoneNumber('')}
+                  onPress={() => setEmail('')}
                 >
                   <Ionicons name="close-circle" size={20} color="#999999" />
                 </TouchableOpacity>
               )}
             </View>
-            {hasAutoFilledCredentials && phoneNumber && (
+            {hasAutoFilledCredentials && email && (
               <View style={styles.autoFillIndicator}>
-                <Text style={styles.autoFillText}>📱 Saved phone number</Text>
+                <Text style={styles.autoFillText}>� Saved email</Text>
               </View>
             )}
           </View>
 
-          {/* MPIN Input */}
+          {/* Password Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>MPIN (6 digits)</Text>
+            <Text style={styles.label}>Password</Text>
             <View style={styles.passwordContainer}>
               <TextInput
                 style={[styles.input, styles.passwordInput]}
-                value={mpin}
-                onChangeText={setMpin}
-                placeholder="Enter your 6-digit MPIN"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter your password"
                 placeholderTextColor="#AAAAAA"
-                secureTextEntry={!showMpin}
-                keyboardType="number-pad"
-                maxLength={6}
+                secureTextEntry={!showPassword}
                 autoComplete="password"
+                autoCapitalize="none"
               />
               <TouchableOpacity 
                 style={styles.eyeIcon}
-                onPress={() => setShowMpin(!showMpin)}
+                onPress={() => setShowPassword(!showPassword)}
               >
                 <Ionicons 
-                  name={showMpin ? 'eye-outline' : 'eye-off-outline'} 
+                  name={showPassword ? 'eye-outline' : 'eye-off-outline'} 
                   size={24} 
                   color="#1DB89A" 
                 />
@@ -601,6 +546,9 @@ const styles = StyleSheet.create({
     paddingLeft: 50,
     paddingRight: 40,
     flex: 1,
+  },
+  emailInput: {
+    paddingLeft: 15, // Remove the extra padding for +63 prefix when email
   },
   clearPhoneButton: {
     position: 'absolute',
