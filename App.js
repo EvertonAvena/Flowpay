@@ -24,6 +24,7 @@ import TermsAndConditionsScreen from './screens/TermsAndConditionsScreen';
 import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen';
 import HelpScreen from './screens/HelpScreen';
 import SendFeedbackScreen from './screens/SendFeedbackScreen';
+import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 
 const Stack = createStackNavigator();
 const ONBOARDING_COMPLETE_KEY = "flowpay_onboarding_complete";
@@ -69,6 +70,7 @@ export default function App() {
         <Stack.Screen name="Next2" component={Next2} />
         <Stack.Screen name="Next3" component={Next3} />
         <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
         <Stack.Screen name="Main" component={TabNavigator} />
         <Stack.Screen name="Transfer" component={TransferScreen} />

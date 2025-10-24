@@ -1,26 +1,23 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useEffect, useCallback } from 'react';
-import { CameraView, Camera } from 'expo-camera';
 import { useFocusEffect } from '@react-navigation/native';
-import QRCode from 'react-native-qrcode-svg';
-import * as ImagePicker from 'expo-image-picker';
+import { Camera, CameraView } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
-import { supabase } from '../supabase';
+import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useCallback, useEffect, useState } from 'react';
 import {
-    Dimensions,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    Alert,
-    ScrollView,
-    TextInput,
-    Image,
-    Animated
+  Alert,
+  Dimensions,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
+import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
 
@@ -89,56 +86,49 @@ export default function QRScreen({ navigation }) {
     }, [])
   );
 
+  // normalize/try to extract payment info from various QR payload shapes
+  const extractPaymentPayload = (obj) => {
+    if (!obj || typeof obj !== 'object') return null;
+    const typeOk = typeof obj.type === 'string' && obj.type.toLowerCase().includes('payment');
+    const hasAccount = obj.account_number || obj.accountNumber || obj.recipientId || obj.recipient_id || obj.account;
+    if (!typeOk && !hasAccount) return null;
+
+    const recipientId = obj.recipientId || obj.recipient_id || null; // UUID (if present)
+    const accountNumber = obj.account_number || obj.accountNumber || obj.account || null; // numeric account
+    const recipientName = obj.recipientName || obj.name || obj.fullname || obj.username || null;
+    const recipientEmail = obj.email || null;
+    const amount = obj.amount || obj.amt || obj.paymentAmount || '';
+
+    // require at least some identifier
+    if (!recipientId && !accountNumber) return null;
+    return { recipientId, accountNumber, recipientName, recipientEmail, amount };
+  };
+
   const handleBarCodeScanned = ({ type, data }) => {
     setScanned(true);
-    
     try {
-      // Try to parse the QR code data as JSON (for payment QRs)
-      const qrData = JSON.parse(data);
-      
-      if (qrData.type === 'payment' && qrData.recipientId && qrData.recipientName) {
-        Alert.alert(
-          'Payment QR Code Detected',
-          `Send money to: ${qrData.recipientName}\nAmount: ${qrData.amount ? `₱${qrData.amount}` : 'Not specified'}`,
-          [
-            {
-              text: 'Cancel',
-              onPress: () => setScanned(false)
-            },
-            {
-              text: 'Send Money',
-              onPress: () => {
-                setScanned(false);
-                navigation.navigate('Transfer', {
-                  recipientId: qrData.recipientId,
-                  recipientName: qrData.recipientName,
-                  amount: qrData.amount || ''
-                });
-              }
-            }
-          ]
-        );
-      } else {
-        // Generic QR code
-        Alert.alert(
-          'QR Code Scanned',
-          `Data: ${data}`,
-          [
-            { text: 'Scan Again', onPress: () => setScanned(false) },
-            { text: 'OK', onPress: () => setScanned(false) }
-          ]
-        );
+      const parsed = JSON.parse(data);
+      const payment = extractPaymentPayload(parsed);
+      if (payment) {
+        navigation.navigate('TransferConfirmation', {
+          recipientId: payment.recipientId || null,
+          recipientAccountNumber: payment.accountNumber || null,
+          recipientName: payment.recipientName || payment.recipientEmail || 'Recipient',
+          recipientEmail: payment.recipientEmail || null,
+          amount: payment.amount || ''
+        });
+        return;
       }
-    } catch (error) {
-      // Not a JSON QR code, treat as generic
-      Alert.alert(
-        'QR Code Scanned',
-        `Type: ${type}\nData: ${data}`,
-        [
-          { text: 'Scan Again', onPress: () => setScanned(false) },
-          { text: 'OK', onPress: () => setScanned(false) }
-        ]
-      );
+      // fallback: not a payment payload
+      Alert.alert('QR Code Scanned', `Data: ${data}`, [
+        { text: 'Scan Again', onPress: () => setScanned(false) },
+        { text: 'OK', onPress: () => setScanned(false) }
+      ]);
+    } catch (err) {
+      Alert.alert('QR Code Scanned', `Type: ${type}\nData: ${data}`, [
+        { text: 'Scan Again', onPress: () => setScanned(false) },
+        { text: 'OK', onPress: () => setScanned(false) }
+      ]);
     }
   };
 
@@ -157,13 +147,84 @@ export default function QRScreen({ navigation }) {
 
   const scanQRFromImage = async (imageUri) => {
     try {
-      // For now, we'll show a message that the image was processed
-      // and offer to enter QR data manually or use the camera instead
       console.log('Processing image for QR code:', imageUri);
-      
-      // Since expo-barcode-scanner has compatibility issues,
-      // we'll provide alternative options to the user
-      return null; // This will trigger the "no QR found" dialog with alternatives
+      // resize to improve reliability / reduce memory
+      let uriToScan = imageUri;
+      try {
+        const resized = await ImageManipulator.manipulateAsync(
+          imageUri,
+          [{ resize: { width: 1024 } }],
+          { compress: 0.9, format: ImageManipulator.SaveFormat.PNG }
+        );
+        uriToScan = resized.uri || imageUri;
+      } catch (resizeErr) {
+        console.warn('Image resize failed, continuing with original image', resizeErr);
+      }
+
+      // Try native scanner first (if available) — call guarded and errors handled locally
+      try {
+        const BarcodeModule = await import('expo-barcode-scanner');
+        const scanner = BarcodeModule?.BarCodeScanner;
+        if (scanner && typeof scanner.scanFromURLAsync === 'function') {
+          try {
+            const barcodes = await scanner.scanFromURLAsync(uriToScan);
+            if (barcodes && barcodes.length > 0 && barcodes[0]?.data) {
+              console.log('Barcodes found (native):', barcodes);
+              return barcodes[0].data || null;
+            }
+            // If native scanner returned nothing, continue to fallback
+            console.warn('Native scanner returned no barcodes, falling back to remote decode.');
+          } catch (scanErr) {
+            // Native runtime error (e.g. missing native module). Don't rethrow — fallback instead.
+            console.warn('Native scanFromURLAsync failed, falling back to remote decode:', scanErr?.message ?? scanErr);
+          }
+        } else {
+          console.warn('Native scanFromURLAsync not available, falling back to remote decode.');
+        }
+      } catch (impErr) {
+        // Import failed (JS-level) — fallback to remote decode
+        console.warn('expo-barcode-scanner import failed, falling back to remote decode:', impErr?.message ?? impErr);
+      }
+
+      // Fallback: upload image to public QR decode API (works without native modules)
+      const fallbackDecodeViaApi = async (fileUri) => {
+        try {
+          const form = new FormData();
+          form.append('file', {
+            uri: fileUri,
+            name: 'qr_upload.jpg',
+            type: 'image/jpeg'
+          });
+          const resp = await fetch('https://api.qrserver.com/v1/read-qr-code/', {
+            method: 'POST',
+            body: form,
+            headers: {
+              Accept: 'application/json'
+            }
+          });
+          if (!resp.ok) {
+            console.warn('QR API returned error', resp.status);
+            return null;
+          }
+          const json = await resp.json();
+          if (Array.isArray(json) && json.length > 0 && json[0].symbol && json[0].symbol.length > 0) {
+            const symbol = json[0].symbol[0];
+            return symbol.data || null;
+          }
+          return null;
+        } catch (err) {
+          console.error('Remote decode error:', err);
+          return null;
+        }
+      };
+
+      const decoded = await fallbackDecodeViaApi(uriToScan);
+      if (decoded) {
+        console.log('Barcodes found (remote):', decoded);
+        return decoded;
+      }
+
+      return null;
     } catch (error) {
       console.error('QR scan error:', error);
       return null;
@@ -172,45 +233,21 @@ export default function QRScreen({ navigation }) {
 
   const processQRFromImage = (qrData) => {
     try {
-      // Try to parse the QR code data as JSON (for payment QRs)
-      const parsedData = JSON.parse(qrData);
-      
-      if (parsedData.type === 'payment' && parsedData.recipientId && parsedData.recipientName) {
-        Alert.alert(
-          'Payment QR Code Detected',
-          `Send money to: ${parsedData.recipientName}\nAmount: ${parsedData.amount ? `₱${parsedData.amount}` : 'Not specified'}`,
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel'
-            },
-            {
-              text: 'Send Money',
-              onPress: () => {
-                navigation.navigate('Transfer', {
-                  recipientId: parsedData.recipientId,
-                  recipientName: parsedData.recipientName,
-                  amount: parsedData.amount || ''
-                });
-              }
-            }
-          ]
-        );
-      } else {
-        // Generic QR code
-        Alert.alert(
-          'QR Code Found',
-          `Data: ${qrData}`,
-          [{ text: 'OK' }]
-        );
+      const parsed = JSON.parse(qrData);
+      const payment = extractPaymentPayload(parsed);
+      if (payment) {
+        navigation.navigate('TransferConfirmation', {
+          recipientId: payment.recipientId || null,
+          recipientAccountNumber: payment.accountNumber || null,
+          recipientName: payment.recipientName || payment.recipientEmail || 'Recipient',
+          recipientEmail: payment.recipientEmail || null,
+          amount: payment.amount || ''
+        });
+        return;
       }
-    } catch (error) {
-      // Not a JSON QR code, treat as generic
-      Alert.alert(
-        'QR Code Found',
-        `Data: ${qrData}`,
-        [{ text: 'OK' }]
-      );
+      Alert.alert('QR Code Found', `Data: ${qrData}`, [{ text: 'OK' }]);
+    } catch (err) {
+      Alert.alert('QR Code Found', `Data: ${qrData}`, [{ text: 'OK' }]);
     }
   };
 

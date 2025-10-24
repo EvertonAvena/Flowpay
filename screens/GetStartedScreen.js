@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio, Video } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Video, Audio } from 'expo-av';
-import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
@@ -74,13 +74,8 @@ export default function GetStartedScreen({ navigation }) {
   };
 
   const handleHaveAccount = () => {
-    if (userStatus === 'logged_in') {
-      // User is already logged in, go to main app
-      navigation.navigate('Main', { screen: 'Home' });
-    } else {
-      // Go to login
-      navigation.navigate('Login');
-    }
+    // Always navigate to the Login screen so the user must authenticate
+    navigation.navigate('Login');
   };
 
   return (
@@ -125,9 +120,7 @@ export default function GetStartedScreen({ navigation }) {
           </LinearGradient>
         </TouchableOpacity>
         <TouchableOpacity style={styles.haveAccountButton} onPress={handleHaveAccount}>
-          <Text style={styles.haveAccountText}>
-            {userStatus === 'logged_in' ? 'GO TO MY ACCOUNT' : 'I ALREADY HAVE AN ACCOUNT'}
-          </Text>
+          <Text style={styles.haveAccountText}>I ALREADY HAVE AN ACCOUNT</Text>
         </TouchableOpacity>
       </LinearGradient>
     </View>

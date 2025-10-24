@@ -1,17 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useState } from 'react';
+import * as MediaLibrary from 'expo-media-library';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
-  Share,
-  Platform
+  View
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { supabase } from '../supabase';
@@ -19,6 +20,8 @@ import { supabase } from '../supabase';
 export default function MyQRCodeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
+  const qrRef = useRef(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -69,14 +72,53 @@ export default function MyQRCodeScreen({ navigation }) {
     }
   };
 
-  const handleDownload = () => {
-    Alert.alert(
-      'Download QR Code',
-      'QR Code download feature coming soon!',
-      [{ text: 'OK' }]
-    );
+  const handleDownload = async () => {
+    try {
+      if (!qrRef.current || !qrRef.current.toDataURL) {
+        Alert.alert('Error', 'Unable to access QR image.');
+        return;
+      }
+      
+      setSaving(true);
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setSaving(false);
+        Alert.alert('Permission required', 'Permission to access photos is required to save the QR code.');
+        return;
+      }
+      
+      // toDataURL provides base64 PNG string via callback
+      qrRef.current.toDataURL(async (base64Data) => {
+        try {
+          const filename = `flowpay_qr_${Date.now()}.png`;
+          const fileUri = FileSystem.cacheDirectory + filename;
+          // write base64 to file
+          await FileSystem.writeAsStringAsync(fileUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+          // create media asset
+          const asset = await MediaLibrary.createAssetAsync(fileUri);
+          // put into album (optional)
+          const albumName = 'FlowPay';
+          const album = await MediaLibrary.getAlbumAsync(albumName);
+          if (!album) {
+            await MediaLibrary.createAlbumAsync(albumName, asset, false);
+          } else {
+            await MediaLibrary.addAssetsToAlbumAsync([asset], album.id, false);
+          }
+          Alert.alert('Saved', 'QR code saved to your gallery/photos.');
+        } catch (err) {
+          console.error('Save error:', err);
+          Alert.alert('Error', 'Failed to save QR code.');
+        } finally {
+          setSaving(false);
+        }
+      });
+    } catch (err) {
+      console.error('Download handler error:', err);
+      setSaving(false);
+      Alert.alert('Error', 'Failed to save QR code.');
+    }
   };
-
+ 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -85,7 +127,7 @@ export default function MyQRCodeScreen({ navigation }) {
       </View>
     );
   }
-
+ 
   // Create QR code data
   const qrData = JSON.stringify({
     type: 'flowpay_payment',
@@ -93,7 +135,7 @@ export default function MyQRCodeScreen({ navigation }) {
     name: profile?.fullname,
     email: profile?.email
   });
-
+ 
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -137,6 +179,7 @@ export default function MyQRCodeScreen({ navigation }) {
                 logo={require('../assets/FlowPay_NoBg_Logo.png')}
                 logoSize={60}
                 logoBackgroundColor="transparent"
+                getRef={(c) => (qrRef.current = c)}
               />
             </View>
 
@@ -164,11 +207,12 @@ export default function MyQRCodeScreen({ navigation }) {
             <TouchableOpacity 
               style={styles.actionButton}
               onPress={handleDownload}
+              disabled={saving}
             >
               <View style={styles.actionIconContainer}>
-                <Ionicons name="cloud-download-outline" size={24} color="#179C7D" />
+                {saving ? <ActivityIndicator color="#179C7D" /> : <Ionicons name="cloud-download-outline" size={24} color="#179C7D" />}
               </View>
-              <Text style={styles.actionText}>Download QR</Text>
+              <Text style={styles.actionText}>{saving ? 'Saving...' : 'Download QR'}</Text>
             </TouchableOpacity>
           </View>
 

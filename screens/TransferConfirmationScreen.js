@@ -1,29 +1,102 @@
-import React, { useState, useEffect } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
+  ActivityIndicator,
   Alert,
+  Dimensions,
   SafeAreaView,
   ScrollView,
-  Dimensions,
-  ActivityIndicator
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
 
 export default function TransferConfirmationScreen({ navigation, route }) {
-  const { recipientId, recipientName, amount: qrAmount } = route.params;
-  
+  const { recipientId, recipientAccountNumber, recipientName, recipientEmail, amount } = route.params || {};
+  const [recipient, setRecipient] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRecipient = async () => {
+      try {
+        // If QR already provided enough info, use it directly
+        if ((recipientName || recipientEmail || recipientAccountNumber) && !recipientId) {
+          setRecipient({
+            id: recipientId || null,
+            account_number: recipientAccountNumber || null,
+            fullname: recipientName || null,
+            email: recipientEmail || null
+          });
+          setLoading(false);
+          return;
+        }
+
+        // If we have a supabase UUID id, fetch by id
+        if (recipientId) {
+          const { data: profileData, error } = await supabase
+            .from('profile')
+            .select('*')
+            .eq('id', recipientId)
+            .single();
+          if (!error && profileData && !cancelled) {
+            setRecipient(profileData);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // As fallback, try to fetch by account_number column if we received one
+        if (recipientAccountNumber) {
+          const { data: profileData2, error: err2 } = await supabase
+            .from('profile')
+            .select('*')
+            .eq('account_number', recipientAccountNumber)
+            .single();
+          if (!err2 && profileData2 && !cancelled) {
+            setRecipient(profileData2);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // If nothing found, use passed name/email if present
+        if (!cancelled) {
+          setRecipient({
+            id: recipientId || null,
+            account_number: recipientAccountNumber || null,
+            fullname: recipientName || null,
+            email: recipientEmail || null
+          });
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Failed to fetch recipient profile', err);
+        if (!cancelled) {
+          setRecipient({
+            id: recipientId || null,
+            account_number: recipientAccountNumber || null,
+            fullname: recipientName || null,
+            email: recipientEmail || null
+          });
+          setLoading(false);
+        }
+      }
+    };
+
+    loadRecipient();
+    return () => { cancelled = true; };
+  }, [recipientId, recipientAccountNumber, recipientName, recipientEmail]);
+  
   const [transferring, setTransferring] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
-  const [recipientProfile, setRecipientProfile] = useState(null);
-  const [amount, setAmount] = useState(qrAmount || '');
+  const [amountState, setAmountState] = useState(amount || '');
   const [note, setNote] = useState('');
   const [userBalance, setUserBalance] = useState(0);
 
@@ -56,21 +129,7 @@ export default function TransferConfirmationScreen({ navigation, route }) {
         return;
       }
 
-      // Fetch recipient profile
-      const { data: recipientProfileData, error: recipientError } = await supabase
-        .from('profile')
-        .select('id, fullname, username, email, account_number')
-        .eq('id', recipientId)
-        .single();
-
-      if (recipientError || !recipientProfileData) {
-        Alert.alert('Error', 'Failed to fetch recipient profile');
-        navigation.goBack();
-        return;
-      }
-
       setUserProfile(userProfileData);
-      setRecipientProfile(recipientProfileData);
       setUserBalance(userProfileData.balance || 0);
       
     } catch (error) {
@@ -83,12 +142,12 @@ export default function TransferConfirmationScreen({ navigation, route }) {
   };
 
   const handleTransfer = async () => {
-    if (!amount || parseFloat(amount) <= 0) {
+    if (!amountState || parseFloat(amountState) <= 0) {
       Alert.alert('Invalid Amount', 'Please enter a valid amount');
       return;
     }
 
-    const transferAmount = parseFloat(amount);
+    const transferAmount = parseFloat(amountState);
     if (transferAmount > userBalance) {
       Alert.alert('Insufficient Funds', 'You do not have enough balance for this transfer');
       return;
@@ -96,7 +155,7 @@ export default function TransferConfirmationScreen({ navigation, route }) {
 
     Alert.alert(
       'Confirm Transfer',
-      `Send ₱${transferAmount.toFixed(2)} to ${recipientProfile.fullname || recipientProfile.username}?`,
+      `Send ₱${transferAmount.toFixed(2)} to ${recipient.fullname || recipient.username}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Confirm', onPress: processTransfer }
@@ -107,7 +166,39 @@ export default function TransferConfirmationScreen({ navigation, route }) {
   const processTransfer = async () => {
     try {
       setTransferring(true);
-      const transferAmount = parseFloat(amount);
+      const transferAmount = parseFloat(amountState);
+
+      // Resolve recipient record first (avoid querying id = null)
+      let resolvedRecipient = null;
+      if (recipient?.id) {
+        const { data: recById, error: recIdErr } = await supabase
+          .from('profile')
+          .select('id, balance, fullname, username, account_number, email')
+          .eq('id', recipient.id)
+          .single();
+        if (recIdErr) {
+          console.error('Recipient lookup by id error:', recIdErr);
+        } else {
+          resolvedRecipient = recById;
+        }
+      } else if (recipient?.account_number) {
+        const { data: recByAcct, error: recAcctErr } = await supabase
+          .from('profile')
+          .select('id, balance, fullname, username, account_number, email')
+          .eq('account_number', recipient.account_number)
+          .single();
+        if (recAcctErr) {
+          console.error('Recipient lookup by account_number error:', recAcctErr);
+        } else {
+          resolvedRecipient = recByAcct;
+        }
+      }
+
+      if (!resolvedRecipient) {
+        Alert.alert('Recipient Not Found', 'Could not find the recipient account. Transfer cancelled.');
+        setTransferring(false);
+        return;
+      }
 
       // Generate unique transaction ID
       const transactionId = `TXN_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -115,8 +206,9 @@ export default function TransferConfirmationScreen({ navigation, route }) {
       // First, update sender's balance (deduct amount)
       const { data: senderUpdate, error: senderError } = await supabase
         .from('profile')
-        .update({ 
-          balance: userBalance - transferAmount 
+        .update({
+          balance: userBalance - transferAmount,
+          updated_at: new Date().toISOString()
         })
         .eq('id', userProfile.id)
         .select('balance')
@@ -125,37 +217,22 @@ export default function TransferConfirmationScreen({ navigation, route }) {
       if (senderError) {
         console.error('Sender update error:', senderError);
         Alert.alert('Transfer Failed', 'Failed to deduct amount from your account');
+        setTransferring(false);
         return;
       }
 
-      // Get recipient's current balance
-      const { data: recipientCurrentData, error: recipientFetchError } = await supabase
-        .from('profile')
-        .select('balance')
-        .eq('id', recipientProfile.id)
-        .single();
-
-      if (recipientFetchError) {
-        console.error('Recipient fetch error:', recipientFetchError);
-        // Rollback sender's balance
-        await supabase
-          .from('profile')
-          .update({ balance: userBalance })
-          .eq('id', userProfile.id);
-        
-        Alert.alert('Transfer Failed', 'Failed to fetch recipient account details');
-        return;
-      }
-
-      const recipientCurrentBalance = recipientCurrentData.balance || 0;
+      // Use resolvedRecipient to get current balance and id
+      const recipientIdResolved = resolvedRecipient.id;
+      const recipientCurrentBalance = resolvedRecipient.balance || 0;
 
       // Update recipient's balance (add amount)
       const { data: recipientUpdate, error: recipientError } = await supabase
         .from('profile')
-        .update({ 
-          balance: recipientCurrentBalance + transferAmount 
+        .update({
+          balance: recipientCurrentBalance + transferAmount,
+          updated_at: new Date().toISOString()
         })
-        .eq('id', recipientProfile.id)
+        .eq('id', recipientIdResolved)
         .select('balance')
         .single();
 
@@ -164,31 +241,32 @@ export default function TransferConfirmationScreen({ navigation, route }) {
         // Rollback sender's balance
         await supabase
           .from('profile')
-          .update({ balance: userBalance })
+          .update({ balance: userBalance, updated_at: new Date().toISOString() })
           .eq('id', userProfile.id);
-        
+
         Alert.alert('Transfer Failed', 'Failed to add amount to recipient account');
+        setTransferring(false);
         return;
       }
 
-      // Record the transaction
+      // Record the transaction (sender)
       const transactionData = {
         user_id: userProfile.id,
         type: 'transfer_sent',
         amount: transferAmount,
-        description: `Transfer to ${recipientProfile.fullname || recipientProfile.username}${note ? ` - ${note}` : ''}`,
+        description: `Transfer to ${resolvedRecipient.fullname || resolvedRecipient.username}${note ? ` - ${note}` : ''}`,
         status: 'completed',
-        counterparty: recipientProfile.fullname || recipientProfile.username,
-        recipient_name: recipientProfile.fullname || recipientProfile.username
+        counterparty: resolvedRecipient.fullname || resolvedRecipient.username,
+        recipient_name: resolvedRecipient.fullname || resolvedRecipient.username
       };
 
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert(transactionData);
 
-      // Also record the transaction for the recipient (incoming)
+      // Record transaction for recipient
       const recipientTransactionData = {
-        user_id: recipientProfile.id,
+        user_id: recipientIdResolved,
         type: 'transfer_received',
         amount: transferAmount,
         description: `Transfer from ${userProfile.fullname || userProfile.username}${note ? ` - ${note}` : ''}`,
@@ -203,13 +281,11 @@ export default function TransferConfirmationScreen({ navigation, route }) {
 
       if (transactionError || recipientTransactionError) {
         console.log('Transaction recording failed:', transactionError || recipientTransactionError);
-        // Don't fail the transfer if transaction recording fails, but log it
       }
 
-      // Success
       Alert.alert(
         'Transfer Successful',
-        `₱${transferAmount.toFixed(2)} has been sent to ${recipientProfile.fullname || recipientProfile.username}`,
+        `₱${transferAmount.toFixed(2)} has been sent to ${resolvedRecipient.fullname || resolvedRecipient.username}`,
         [
           {
             text: 'OK',
@@ -222,7 +298,6 @@ export default function TransferConfirmationScreen({ navigation, route }) {
           }
         ]
       );
-
     } catch (error) {
       console.error('Transfer processing error:', error);
       Alert.alert('Transfer Failed', 'Something went wrong. Please try again.');
@@ -301,10 +376,10 @@ export default function TransferConfirmationScreen({ navigation, route }) {
           <View style={styles.accountCard}>
             <View style={styles.accountInfo}>
               <Text style={styles.accountName}>
-                {recipientProfile?.fullname || recipientProfile?.username || recipientName}
+                {recipient?.fullname || recipient?.username || recipientName}
               </Text>
               <Text style={styles.accountNumber}>
-                Account: {recipientProfile?.account_number || 'N/A'}
+                Account: {recipient?.account_number || 'N/A'}
               </Text>
               <Text style={styles.qrCodeLabel}>QR Code Recipient</Text>
             </View>
@@ -315,11 +390,11 @@ export default function TransferConfirmationScreen({ navigation, route }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Amount</Text>
           <View style={styles.amountCard}>
-            {qrAmount ? (
+            {amount ? (
               // QR code has preset amount - show as readonly
               <View style={styles.presetAmountContainer}>
                 <Text style={styles.presetAmountLabel}>Preset Amount</Text>
-                <Text style={styles.presetAmount}>₱{parseFloat(qrAmount).toFixed(2)}</Text>
+                <Text style={styles.presetAmount}>₱{parseFloat(amount).toFixed(2)}</Text>
                 <Text style={styles.presetAmountNote}>
                   This amount was set by the QR code and cannot be changed
                 </Text>
@@ -332,8 +407,8 @@ export default function TransferConfirmationScreen({ navigation, route }) {
                   <Text style={styles.currencySymbol}>₱</Text>
                   <TextInput
                     style={styles.amountInput}
-                    value={amount}
-                    onChangeText={setAmount}
+                    value={amountState}
+                    onChangeText={setAmountState}
                     placeholder="0.00"
                     keyboardType="numeric"
                     placeholderTextColor="#999"
@@ -367,7 +442,7 @@ export default function TransferConfirmationScreen({ navigation, route }) {
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Amount:</Text>
             <Text style={styles.summaryValue}>
-              ₱{amount ? parseFloat(amount).toFixed(2) : '0.00'}
+              ₱{amountState ? parseFloat(amountState).toFixed(2) : '0.00'}
             </Text>
           </View>
           <View style={styles.summaryItem}>
@@ -377,7 +452,7 @@ export default function TransferConfirmationScreen({ navigation, route }) {
           <View style={[styles.summaryItem, styles.totalItem]}>
             <Text style={styles.totalLabel}>Total:</Text>
             <Text style={styles.totalValue}>
-              ₱{amount ? parseFloat(amount).toFixed(2) : '0.00'}
+              ₱{amountState ? parseFloat(amountState).toFixed(2) : '0.00'}
             </Text>
           </View>
         </View>
@@ -388,16 +463,16 @@ export default function TransferConfirmationScreen({ navigation, route }) {
         <TouchableOpacity
           style={[
             styles.transferButton,
-            (!amount || parseFloat(amount) <= 0 || transferring) && styles.transferButtonDisabled
+            (!amountState || parseFloat(amountState) <= 0 || transferring) && styles.transferButtonDisabled
           ]}
           onPress={handleTransfer}
-          disabled={!amount || parseFloat(amount) <= 0 || transferring}
+          disabled={!amountState || parseFloat(amountState) <= 0 || transferring}
         >
           {transferring ? (
             <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.transferButtonText}>
-              Send ₱{amount ? parseFloat(amount).toFixed(2) : '0.00'}
+              Send ₱{amountState ? parseFloat(amountState).toFixed(2) : '0.00'}
             </Text>
           )}
         </TouchableOpacity>

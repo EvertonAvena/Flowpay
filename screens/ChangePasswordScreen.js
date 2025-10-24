@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   SafeAreaView,
   ScrollView,
@@ -9,8 +10,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  ActivityIndicator
+  View
 } from 'react-native';
 import { supabase } from '../supabase';
 
@@ -42,22 +42,19 @@ export default function ChangePasswordScreen({ navigation }) {
   };
 
   const handleChangePassword = async () => {
-    // Validation
+    // Validation (keep your existing checks)
     if (!currentPassword || !newPassword || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
-
     if (newPassword !== confirmPassword) {
       Alert.alert('Error', 'New passwords do not match');
       return;
     }
-
     if (currentPassword === newPassword) {
       Alert.alert('Error', 'New password must be different from current password');
       return;
     }
-
     const validation = validatePassword(newPassword);
     if (!validation.isValid) {
       let errorMessage = 'Password must:\n';
@@ -66,7 +63,6 @@ export default function ChangePasswordScreen({ navigation }) {
       if (!validation.hasLowerCase) errorMessage += '• Contain lowercase letter\n';
       if (!validation.hasNumber) errorMessage += '• Contain number\n';
       if (!validation.hasSpecialChar) errorMessage += '• Contain special character';
-      
       Alert.alert('Weak Password', errorMessage);
       return;
     }
@@ -74,31 +70,41 @@ export default function ChangePasswordScreen({ navigation }) {
     try {
       setLoading(true);
 
-      // Update password using Supabase Auth
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
-      });
+      // 1) get current user and email
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !userData?.user?.email) {
+        throw new Error('Unable to get current user. Please re-login and try again.');
+      }
+      const email = userData.user.email;
 
-      if (error) {
-        throw error;
+      // 2) reauthenticate using current password
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword
+      });
+      if (signInErr) {
+        throw new Error('Current password is incorrect.');
       }
 
-      Alert.alert(
-        'Success',
-        'Your password has been changed successfully!',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack()
-          }
-        ]
-      );
+      // 3) update the password
+      const { error: updateErr } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+      if (updateErr) {
+        throw updateErr;
+      }
+
+      // 4) optionally sign in again to refresh session with the new password
+      await supabase.auth.signInWithPassword({ email, password: newPassword });
+
+      Alert.alert('Success', 'Your password has been changed successfully!', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
 
       // Clear fields
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-
     } catch (error) {
       console.error('Change password error:', error);
       Alert.alert('Error', error.message || 'Failed to change password. Please try again.');
