@@ -1,19 +1,19 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Alert,
-  Dimensions,
-  Image,
-  ImageBackground,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Dimensions,
+    Image,
+    ImageBackground,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { supabase } from '../supabase';
 
@@ -109,7 +109,12 @@ export default function HomeScreen({ navigation }) {
           style: "destructive",
           onPress: async () => {
             try {
+              // DON'T clear saved credentials - keep them for fingerprint login
+              // User can still use fingerprint to login as the saved account
+              
+              // Sign out from Supabase
               await supabase.auth.signOut();
+              
               navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
             } catch (error) {
               console.error("Logout error:", error);

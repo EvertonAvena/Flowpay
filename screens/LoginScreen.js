@@ -3,7 +3,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
-import * as SecureStore from 'expo-secure-store';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -30,7 +29,6 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
-  const [isBiometricSaved, setIsBiometricSaved] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [hasAutoFilledCredentials, setHasAutoFilledCredentials] = useState(false);
 
@@ -63,84 +61,48 @@ export default function LoginScreen({ navigation }) {
   // Run every time the screen comes into focus
   useFocusEffect(
     useCallback(() => {
+      console.log('LoginScreen focused - checking biometric availability');
       checkBiometricAvailability();
     }, [])
   );
 
-  // Check for biometric support and saved credentials
+  // Check for biometric support (show button if supported, regardless of saved credentials)
   const checkBiometricAvailability = async () => {
     try {
-      // First check if device supports biometrics
+      // Check if device supports biometrics
       const compatible = await LocalAuthentication.hasHardwareAsync();
       setIsBiometricSupported(compatible);
       
       if (compatible) {
-        // Check if user has enrolled biometrics
-        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-        
-        // Explicitly check for credentials with the fixed key
-        try {
-          const credentialsString = await AsyncStorage.getItem(CREDENTIALS_KEY);
-          
-          // Set state based on both conditions
-          if (credentialsString && isEnrolled) {
-            setIsBiometricSaved(true);
-          } else {
-            setIsBiometricSaved(false);
-          }
-        } catch (storageError) {
-          console.error("AsyncStorage error:", storageError);
-          setIsBiometricSaved(false);
-        }
+        console.log('Biometric hardware available - fingerprint button will show');
+      } else {
+        console.log('Biometric hardware not available');
       }
     } catch (error) {
       console.error('Error checking biometrics:', error);
-      setIsBiometricSaved(false);
+      setIsBiometricSupported(false);
     }
   };
 
-  // Use the fixed key for saving credentials (now includes supabase session tokens)
-  const saveCredentials = async (userData, authSession) => {
+  // Save credentials for biometric login (email + password approach)
+  const saveCredentials = async (userEmail, userPassword) => {
     try {
-      // If authSession wasn't provided, try to get current session from Supabase
-      let sessionToSave = authSession ?? null;
-      if (!sessionToSave) {
-        try {
-          const { data: currentSession } = await supabase.auth.getSession();
-          sessionToSave = currentSession?.session ?? null;
-        } catch (e) {
-          console.warn('Could not read current supabase session:', e);
-          sessionToSave = null;
-        }
-      }
-
-      const credentials = {
-        email: email,
-        userData: userData || null,
-        // Save only non-sensitive session metadata in AsyncStorage
-        session: sessionToSave
-          ? {
-              expiresAt: sessionToSave.expires_at ?? null,
-            }
-          : null,
-        isLoggedIn: true,
-        timestamp: new Date().toISOString()
-      };
-
-      // Save non-sensitive data to AsyncStorage
-      await AsyncStorage.setItem(CREDENTIALS_KEY, JSON.stringify(credentials));
-
-      // Save sensitive tokens to SecureStore (refresh token + access token)
-      if (sessionToSave?.refresh_token) {
-        await SecureStore.setItemAsync('flowpay_refresh_token', sessionToSave.refresh_token, { keychainAccessible: SecureStore.ALWAYS_THIS_DEVICE_ONLY });
-      }
-      if (sessionToSave?.access_token) {
-        await SecureStore.setItemAsync('flowpay_access_token', sessionToSave.access_token, { keychainAccessible: SecureStore.ALWAYS_THIS_DEVICE_ONLY });
-      }
-
-      const savedCheck = await AsyncStorage.getItem(CREDENTIALS_KEY);
-      if (savedCheck) setIsBiometricSaved(true);
-      console.log('Credentials saved (biometric):', !!savedCheck, sessionToSave ? 'tokens saved to SecureStore' : 'no session');
+      // Use AsyncStorage (same as your other app) instead of SecureStore
+      await AsyncStorage.setItem('flowpay_user_email', userEmail);
+      await AsyncStorage.setItem('flowpay_user_password', userPassword);
+      
+      // Verify they were saved
+      const verifyEmail = await AsyncStorage.getItem('flowpay_user_email');
+      const verifyPassword = await AsyncStorage.getItem('flowpay_user_password');
+      
+      console.log('AsyncStorage verification:', {
+        emailSaved: !!verifyEmail,
+        passwordSaved: !!verifyPassword,
+        emailMatches: verifyEmail === userEmail,
+        passwordMatches: verifyPassword === userPassword
+      });
+      
+      console.log('✅ Credentials saved for biometric login - fingerprint will be available');
     } catch (error) {
       console.error('Error saving credentials:', error);
       Alert.alert('Storage Error', 'Could not save credentials for biometric login');
@@ -180,8 +142,8 @@ export default function LoginScreen({ navigation }) {
         return;
       }
 
-      // Save credentials (include supabase session tokens so biometric can restore session)
-      await saveCredentials(profile, authData?.session ?? null);
+      // Save credentials for biometric login (email + password)
+      await saveCredentials(email, password);
 
       // Mark onboarding as complete
       await AsyncStorage.setItem('flowpay_onboarding_complete', 'true');
@@ -210,12 +172,16 @@ export default function LoginScreen({ navigation }) {
         return;
       }
 
-      const savedCredentialsString = await AsyncStorage.getItem(CREDENTIALS_KEY);
-      if (!savedCredentialsString) {
-        Alert.alert('Error', 'No saved credentials found. Please log in first.');
+      // Check for saved credentials (check when button is tapped, not before)
+      const savedEmail = await AsyncStorage.getItem('flowpay_user_email');
+      const savedPassword = await AsyncStorage.getItem('flowpay_user_password');
+
+      if (!savedEmail || !savedPassword) {
+        Alert.alert('No Saved Credentials', 'Please login manually first to enable fingerprint login.');
         return;
       }
 
+      // Authenticate with biometrics
       const { success } = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Login with fingerprint',
         disableDeviceFallback: false,
@@ -224,77 +190,47 @@ export default function LoginScreen({ navigation }) {
       });
 
       if (!success) {
-        Alert.alert('Authentication Failed', 'Please try again or use your email and password to log in');
         return;
       }
 
-      const savedCredentials = JSON.parse(savedCredentialsString);
-      console.log('Biometric: loaded saved credentials', !!savedCredentials);
+      // Biometric authentication successful - now login with saved credentials
+      setLoading(true);
 
-      // Read tokens from SecureStore
-      const refreshToken = await SecureStore.getItemAsync('flowpay_refresh_token');
-      const accessToken = await SecureStore.getItemAsync('flowpay_access_token');
+      try {
+        // Sign in with Supabase using saved credentials
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: savedEmail,
+          password: savedPassword,
+        });
 
-      // Helper to show safe preview (don't log whole token)
-      const tokenPreview = (t) => (t ? `${t.length} chars, start=${t.slice(0,6)}...` : 'null');
-      console.log('Biometric tokens preview ->', { refresh: tokenPreview(refreshToken), access: tokenPreview(accessToken) });
-
-      if (!refreshToken) {
-        console.warn('No refresh token saved in SecureStore.');
-        Alert.alert('No user found', 'Could not restore session. Please log in again.');
-        return;
-      }
-
-      // Try to restore session using stored refresh token only (preferred)
-      const { data: setData, error: setError } = await supabase.auth.setSession({
-        refresh_token: refreshToken,
-        // only include access_token if available
-        access_token: accessToken ?? undefined,
-      });
-
-      if (setError) {
-        console.warn('supabase.auth.setSession failed:', setError);
-        // If token is invalid/expired/revoked, clear saved tokens to avoid repeated failed attempts
-        try {
-          await SecureStore.deleteItemAsync('flowpay_refresh_token');
-          await SecureStore.deleteItemAsync('flowpay_access_token');
-          await AsyncStorage.removeItem(CREDENTIALS_KEY);
-          setIsBiometricSaved(false);
-          console.log('Cleared saved biometric tokens due to failed restore.');
-        } catch (e) {
-          console.error('Error clearing saved tokens after failed restore:', e);
+        if (authError || !authData?.user) {
+          setLoading(false);
+          Alert.alert('Login Failed', 'Could not authenticate with saved credentials. Please log in manually.');
+          return;
         }
 
-        // Provide clearer message: usually means token was revoked (e.g. signOut was called)
-        Alert.alert(
-          'No user found',
-          'Could not restore session (token invalid or revoked). Please log in again.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
+        // Get user profile
+        const { data: profile, error: profileError } = await supabase
+          .from('profile')
+          .select('*')
+          .eq('email', savedEmail)
+          .single();
 
-      // Confirm session/user exists
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      console.log('Biometric: getUser after setSession ->', { userData, userError });
-
-      if (userError || !userData?.user) {
-        console.warn('No user available after restoring session:', userError);
-        // If restoration unexpectedly failed, clear saved values to force fresh login next time
-        try {
-          await SecureStore.deleteItemAsync('flowpay_refresh_token');
-          await SecureStore.deleteItemAsync('flowpay_access_token');
-          await AsyncStorage.removeItem(CREDENTIALS_KEY);
-          setIsBiometricSaved(false);
-        } catch (e) {
-          console.error('Error clearing saved tokens after missing user:', e);
+        if (profileError || !profile) {
+          setLoading(false);
+          Alert.alert('Login Failed', 'Could not load user profile.');
+          return;
         }
-        Alert.alert('No user found', 'Please log in again.');
-        return;
-      }
 
-      // Success
-      navigation.navigate('Main', { screen: 'Home' });
+        setLoading(false);
+        
+        // Navigate to home
+        navigation.navigate('Main', { screen: 'Home' });
+      } catch (error) {
+        setLoading(false);
+        console.error('Biometric login error:', error);
+        Alert.alert('Error', 'Login failed. Please try again manually.');
+      }
     } catch (error) {
       console.error('Biometric auth error:', error);
       Alert.alert('Error', 'An error occurred during biometric authentication');
@@ -486,8 +422,8 @@ export default function LoginScreen({ navigation }) {
             </TouchableOpacity>
           </View>
           
-          {/* Fingerprint login */}
-          {isBiometricSupported && isBiometricSaved && (
+          {/* Fingerprint login - Show whenever biometric is supported */}
+          {isBiometricSupported && (
             <TouchableOpacity
               style={styles.fingerprintContainer}
               onPress={handleBiometricAuth}

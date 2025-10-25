@@ -1,17 +1,15 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
-  Dimensions,
-  Image,
-  Linking,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Dimensions,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { supabase } from '../supabase';
 
@@ -95,7 +93,12 @@ export default function ProfileScreen({ navigation }) {
           style: "destructive",
           onPress: async () => {
             try {
+              // DON'T clear saved credentials - keep them for fingerprint login
+              // User can still use fingerprint to login as the saved account
+              
+              // Sign out from Supabase
               await supabase.auth.signOut();
+              
               navigation.reset({
                 index: 0,
                 routes: [{ name: 'Login' }],

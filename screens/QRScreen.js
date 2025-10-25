@@ -161,33 +161,8 @@ export default function QRScreen({ navigation }) {
         console.warn('Image resize failed, continuing with original image', resizeErr);
       }
 
-      // Try native scanner first (if available) — call guarded and errors handled locally
-      try {
-        const BarcodeModule = await import('expo-barcode-scanner');
-        const scanner = BarcodeModule?.BarCodeScanner;
-        if (scanner && typeof scanner.scanFromURLAsync === 'function') {
-          try {
-            const barcodes = await scanner.scanFromURLAsync(uriToScan);
-            if (barcodes && barcodes.length > 0 && barcodes[0]?.data) {
-              console.log('Barcodes found (native):', barcodes);
-              return barcodes[0].data || null;
-            }
-            // If native scanner returned nothing, continue to fallback
-            console.warn('Native scanner returned no barcodes, falling back to remote decode.');
-          } catch (scanErr) {
-            // Native runtime error (e.g. missing native module). Don't rethrow — fallback instead.
-            console.warn('Native scanFromURLAsync failed, falling back to remote decode:', scanErr?.message ?? scanErr);
-          }
-        } else {
-          console.warn('Native scanFromURLAsync not available, falling back to remote decode.');
-        }
-      } catch (impErr) {
-        // Import failed (JS-level) — fallback to remote decode
-        console.warn('expo-barcode-scanner import failed, falling back to remote decode:', impErr?.message ?? impErr);
-      }
-
-      // Fallback: upload image to public QR decode API (works without native modules)
-      const fallbackDecodeViaApi = async (fileUri) => {
+      // Use remote QR decode API (works without native modules)
+      const decodeViaApi = async (fileUri) => {
         try {
           const form = new FormData();
           form.append('file', {
@@ -218,9 +193,9 @@ export default function QRScreen({ navigation }) {
         }
       };
 
-      const decoded = await fallbackDecodeViaApi(uriToScan);
+      const decoded = await decodeViaApi(uriToScan);
       if (decoded) {
-        console.log('Barcodes found (remote):', decoded);
+        console.log('QR code found via remote API:', decoded);
         return decoded;
       }
 
