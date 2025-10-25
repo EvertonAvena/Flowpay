@@ -85,7 +85,7 @@ export default function HomeScreen({ navigation }) {
       // 5. Fetch recent transactions
       const { data: txData } = await supabase
         .from('transactions')
-        .select('type, amount, description, created_at, status, counterparty, recipient_name') // <-- add recipient_name here
+        .select('type, amount, description, created_at, status, counterparty, recipient_name')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -136,9 +136,6 @@ export default function HomeScreen({ navigation }) {
     return firstInitial + lastInitial;
   };
 
-  // Choose display name
-  const displayName = profile?.fullname || profile?.username || profile?.email || 'User';
-
   return (
     <ImageBackground 
       source={require('../assets/flowpay_bg.png')}
@@ -147,9 +144,7 @@ export default function HomeScreen({ navigation }) {
       imageStyle={{ marginTop: -70 }}
     >
       <StatusBar barStyle="light-content" />
-      <View
-        style={styles.gradient}
-      >
+      <View style={styles.gradient}>
         {/* Header with Profile */}
         <SafeAreaView style={styles.header}>
           <Image
@@ -245,7 +240,10 @@ export default function HomeScreen({ navigation }) {
         <ScrollView style={styles.scrollableSection} showsVerticalScrollIndicator={false}>
           <View style={styles.recentActivityContainer}>
             {transactions.length === 0 && (
-              <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>No recent transactions.</Text>
+              <View style={styles.noTransactions}>
+                <Ionicons name="receipt-outline" size={48} color="#999" />
+                <Text style={styles.noTransactionsText}>No recent transactions</Text>
+              </View>
             )}
             {transactions.map((tx, idx) => {
               const getTransactionIcon = (type) => {
@@ -260,39 +258,87 @@ export default function HomeScreen({ navigation }) {
                     return { name: 'swap-horizontal', color: '#6B7280' };
                 }
               };
+
               const iconData = getTransactionIcon(tx.type);
+              
+              // Format transaction title based on type
+              const formatTransactionTitle = () => {
+                switch(tx.type) {
+                  case 'transfer':
+                    return `Transfer to ${tx.recipient_name || tx.counterparty || 'User'}`;
+                  case 'received':
+                    return `Received from ${tx.counterparty || 'User'}`;
+                  case 'bill':
+                    return tx.description || 'Bill Payment';
+                  default:
+                    return tx.description || tx.type.charAt(0).toUpperCase() + tx.type.slice(1);
+                }
+              };
+
+              // Format date to be more readable
+              const formatTransactionDate = (dateString) => {
+                const date = new Date(dateString);
+                const now = new Date();
+                const diffTime = Math.abs(now - date);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                if (diffDays === 1) {
+                  return 'Yesterday';
+                } else if (diffDays < 7) {
+                  return `${diffDays} days ago`;
+                } else {
+                  return date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+                }
+              };
+
               return (
                 <View style={styles.transactionItem} key={idx}>
                   <View style={styles.transactionLeft}>
                     <View style={[
                       styles.transactionIcon,
-                      tx.type === 'received' ? styles.receivedIcon : styles.transferIcon
+                      tx.type === 'received' ? styles.receivedIcon : 
+                      tx.type === 'transfer' ? styles.transferIcon :
+                      styles.billIcon
                     ]}>
-                      <Ionicons name={iconData.name} size={24} color={iconData.color} />
+                      <Ionicons name={iconData.name} size={20} color={iconData.color} />
                     </View>
-                    <View>
-                    <Text style={styles.transactionTitle}>
-                      {tx.type === 'transfer'
-                        ? `Transfer to ${tx.recipient_name || tx.counterparty}`
-                        : tx.description || (tx.type === 'received'
-                            ? 'Money Received'
-                            : tx.type === 'transfer'
-                              ? 'Bank Transfer'
-                              : tx.type)}
+                    <View style={styles.transactionDetails}>
+                      <Text style={styles.transactionTitle} numberOfLines={1}>
+                        {formatTransactionTitle()}
+                      </Text>
+                      <Text style={styles.transactionDate}>
+                        {formatTransactionDate(tx.created_at)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.transactionRight}>
+                    <Text style={[
+                      styles.transactionAmount,
+                      tx.type === 'received' ? styles.positiveAmount : styles.negativeAmount
+                    ]}>
+                      {tx.type === 'received' ? '+' : '-'}₱{Math.abs(Number(tx.amount)).toLocaleString(undefined, { 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                      })}
                     </Text>
-                    <Text style={styles.transactionDate}>
-                      {new Date(tx.created_at).toLocaleString()}
-                    </Text>
+                    <View style={[
+                      styles.statusIndicator,
+                      tx.status === 'completed' ? styles.completedStatus :
+                      tx.status === 'pending' ? styles.pendingStatus :
+                      styles.failedStatus
+                    ]}>
+                      <Text style={styles.statusText}>
+                        {tx.status ? tx.status.charAt(0).toUpperCase() + tx.status.slice(1) : 'Completed'}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-                <Text style={[
-                  styles.transactionAmount,
-                  Number(tx.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount
-                ]}>
-                  {Number(tx.amount) >= 0 ? '+' : '-'}{Math.abs(Number(tx.amount)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </Text>
-              </View>
-            );
+              );
             })}
             
             {/* Spacer to push content above tab bar */}
@@ -393,7 +439,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 5,
     marginTop: -25,
-    gap: 20, // Moderate space between the two buttons
+    gap: 20,
   },
   actionButton: {
     backgroundColor: 'white',
@@ -456,7 +502,7 @@ const styles = StyleSheet.create({
     width: '47%',
     justifyContent: 'space-between',
     height: 180,
-    gap: 15, // Adds spacing between Weekly Spending and Coin Balance
+    gap: 15,
   },
   statsLabel: {
     color: '#666',
@@ -486,36 +532,51 @@ const styles = StyleSheet.create({
     marginBottom: 100,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: 'white',
     marginBottom: 15,
+    marginLeft: 5,
+  },
+  noTransactions: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  noTransactionsText: {
+    color: '#999',
+    fontSize: 16,
+    marginTop: 10,
+    fontWeight: '500',
   },
   transactionItem: {
     backgroundColor: 'white',
     borderRadius: 20,
-    padding: 18,
+    padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowRadius: 4,
+    elevation: 3,
+    minHeight: 70,
   },
   transactionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
   },
   transactionIcon: {
-    width: 45,
-    height: 45,
+    width: 42,
+    height: 42,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
+    marginRight: 12,
   },
   receivedIcon: {
     backgroundColor: '#E8F5E8',
@@ -523,24 +584,56 @@ const styles = StyleSheet.create({
   transferIcon: {
     backgroundColor: '#FFE8E8',
   },
+  billIcon: {
+    backgroundColor: '#FFF6E8',
+  },
+  transactionDetails: {
+    flex: 1,
+    justifyContent: 'center',
+  },
   transactionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#333',
+    marginBottom: 4,
   },
   transactionDate: {
     fontSize: 12,
     color: '#999',
-    marginTop: 2,
+    fontWeight: '500',
+  },
+  transactionRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   transactionAmount: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    marginBottom: 4,
   },
   positiveAmount: {
-    color: '#4CAF50',
+    color: '#10B981',
   },
   negativeAmount: {
-    color: '#FF5252',
+    color: '#EF4444',
+  },
+  statusIndicator: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  completedStatus: {
+    backgroundColor: '#E8F5E8',
+  },
+  pendingStatus: {
+    backgroundColor: '#FFF6E8',
+  },
+  failedStatus: {
+    backgroundColor: '#FFE8E8',
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#666',
   },
 });
