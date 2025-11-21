@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  Alert,
-  SafeAreaView,
-  Modal,
-  Animated,
-  ActivityIndicator,
-  FlatList,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Animated,
+    FlatList,
+    Modal,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { supabase } from '../supabase';
 
 const BILL_CATEGORIES = [
@@ -87,7 +87,7 @@ const BILL_CATEGORIES = [
   },
 ];
 
-export default function PayBillsScreen({ navigation }) {
+export default function PayBillsScreen({ navigation, route }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [billerReference, setBillerReference] = useState('');
@@ -114,6 +114,98 @@ export default function PayBillsScreen({ navigation }) {
     setSelectedCategory(null);
     setSearchQuery('');
   };
+
+  // If navigated from a notification (admin-created bill), prefill fields
+  useEffect(() => {
+    const params = route?.params;
+    if (params && params.fromBill) {
+      console.log('PayBillsScreen route.params:', params);
+      const { billId, bill_type, provider, reference, amount: billAmount, recipient_name, recipient_email, account_number } = params;
+
+      // Try to find matching category by name (case-insensitive)
+      let category = BILL_CATEGORIES.find(c => c.name.toLowerCase() === (bill_type || '').toLowerCase());
+
+      // If category isn't found, create a lightweight fallback category so UI can render and auto-confirm
+      if (!category) {
+        const catId = (bill_type || 'others').toLowerCase().replace(/\s+/g, '-');
+        category = { id: catId, name: bill_type || 'Others', providers: [] };
+      }
+
+      setSelectedCategory(category);
+
+      // Determine provider: prefer explicit provider, then match from category, otherwise fallback to first or a placeholder
+      let foundProvider = null;
+      if (provider) {
+        foundProvider = (category.providers || []).find(p => p.name.toLowerCase() === provider.toLowerCase());
+        if (!foundProvider) {
+          const idSafe = provider.toLowerCase().replace(/\s+/g, '-');
+          foundProvider = { id: idSafe, name: provider };
+        }
+      }
+
+      if (!foundProvider) {
+        if (category.providers && category.providers.length > 0) {
+          foundProvider = category.providers[0];
+        } else {
+          foundProvider = { id: `unknown-${category.id}`, name: provider || category.name };
+        }
+      }
+
+      setSelectedProvider(foundProvider);
+
+      // Always set reference/name/email/amount (use empty string as safe default)
+      const paramReference = reference ?? account_number ?? params.reference ?? params.reference_number ?? '';
+      const paramFullName = recipient_name ?? params.recipient_name ?? '';
+      const paramEmail = recipient_email ?? params.recipient_email ?? '';
+      setBillerReference(paramReference);
+      setFullName(paramFullName);
+      setEmail(paramEmail);
+      if (billAmount !== undefined && billAmount !== null) setAmount(String(billAmount));
+
+      // If caller requested auto-confirm, attempt to fetch profile when recipient_name/reference are missing
+      if (params.autoConfirm) {
+        (async () => {
+          try {
+            // If recipient name or reference are missing but we have user_id, fetch profile
+            if ((!paramFullName || paramFullName === '') && params.user_id) {
+              const { data: profileData, error: profileError } = await supabase
+                .from('profile')
+                .select('fullname,email,account_number')
+                .eq('id', params.user_id)
+                .single();
+              if (!profileError && profileData) {
+                if (!paramFullName) setFullName(profileData.fullname || '');
+                if (!paramReference) setBillerReference(profileData.account_number || '');
+                if (!paramEmail) setEmail(profileData.email || '');
+              }
+            }
+          } catch (e) {
+            // ignore fetch errors — we'll still open the modal with whatever we have
+            console.warn('Failed to fetch profile for bill autofill', e);
+          } finally {
+            setAutoConfirmPending(true);
+          }
+        })();
+      }
+
+      // store billId on route params for confirm handler to update the existing bill (unchanged)
+    }
+  }, [route]);
+
+  // Auto-confirm flow: when navigated with autoConfirm and prefill is done,
+  // open the confirmation modal automatically. Use a small flag to avoid
+  // re-triggering repeatedly.
+  const [autoConfirmPending, setAutoConfirmPending] = useState(false);
+
+  useEffect(() => {
+    if (autoConfirmPending && selectedProvider) {
+      // open confirmation modal after a tiny delay so UI has a chance to render
+      setTimeout(() => {
+        openConfirmationModal();
+        setAutoConfirmPending(false);
+      }, 120);
+    }
+  }, [autoConfirmPending, selectedProvider, amount]);
 
   // Filter providers based on search query
   useEffect(() => {
@@ -278,21 +370,33 @@ export default function PayBillsScreen({ navigation }) {
         return;
       }
 
-      // 1. Insert into BILLS table (bill-specific information)
-      const { error: billError } = await supabase
-        .from('bills')
-        .insert([
-          {
-            user_id: user.id,
-            bill_type: selectedCategory?.name,
-            amount: paymentAmount,
-            due_date: new Date().toISOString().split('T')[0], // Today's date
-            status: 'paid',
-          }
-        ]);
+      // 1. If this payment was initiated from an admin-created bill, update that bill to 'paid'.
+      // Otherwise insert a new paid bill record for user's history.
+      const billId = route?.params?.billId;
+      if (billId) {
+        // Update only the fields that exist in the schema (avoid paid_at if it doesn't exist)
+        const { error: updateBillError } = await supabase
+          .from('bills')
+          .update({ status: 'paid', amount: paymentAmount })
+          .eq('id', billId);
 
-      if (billError) {
-        throw billError;
+        if (updateBillError) throw updateBillError;
+      } else {
+        const { error: billError } = await supabase
+          .from('bills')
+          .insert([
+            {
+              user_id: user.id,
+              bill_type: selectedCategory?.name,
+              amount: paymentAmount,
+              due_date: new Date().toISOString().split('T')[0], // Today's date
+              status: 'paid',
+            }
+          ]);
+
+        if (billError) {
+          throw billError;
+        }
       }
 
       // 2. Insert into TRANSACTIONS table (financial transaction record)

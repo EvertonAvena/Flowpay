@@ -1,60 +1,76 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect, useState } from 'react';
 import {
-    Dimensions,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Dimensions,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
 
 export default function NotificationScreen({ navigation }) {
-  const notifications = [
-    {
-      id: '1',
-      title: 'Payment Received',
-      message: 'You have received ₱50.00 from John Doe',
-      time: '2 hours ago',
-      isRead: false,
-      type: 'transaction'
-    },
-    {
-      id: '2',
-      title: 'Weekly Summary',
-      message: 'Your spending this week was 15% less than last week. Great job!',
-      time: '1 day ago',
-      isRead: true,
-      type: 'summary'
-    },
-    {
-      id: '3',
-      title: 'Bill Payment Reminder',
-      message: 'Your electricity bill is due in 3 days',
-      time: '2 days ago',
-      isRead: false,
-      type: 'reminder'
-    },
-    {
-      id: '4',
-      title: 'Security Alert',
-      message: 'A new device was used to log into your account',
-      time: '3 days ago',
-      isRead: true,
-      type: 'security'
-    },
-    {
-      id: '5',
-      title: 'Promotion',
-      message: 'Transfer money with zero fees this weekend!',
-      time: '5 days ago',
-      isRead: true,
-      type: 'promo'
-    },
-  ];
+  const [notifications, setNotifications] = useState([]); // fallback/static notifications
+  const [bills, setBills] = useState([]);
+  const [loadingBills, setLoadingBills] = useState(false);
+
+  // static fallback notifications for other types
+  useEffect(() => {
+    setNotifications([
+      { id: 'n1', title: 'Payment Received', message: 'You have received ₱50.00 from John Doe', time: '2 hours ago', isRead: false, type: 'transaction' },
+      { id: 'n2', title: 'Weekly Summary', message: 'Your spending this week was 15% less than last week. Great job!', time: '1 day ago', isRead: true, type: 'summary' },
+      { id: 'n4', title: 'Security Alert', message: 'A new device was used to log into your account', time: '3 days ago', isRead: true, type: 'security' },
+      { id: 'n5', title: 'Promotion', message: 'Transfer money with zero fees this weekend!', time: '5 days ago', isRead: true, type: 'promo' },
+    ]);
+  }, []);
+
+  useEffect(() => {
+    // fetch bills when screen is focused
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchUserBills();
+    });
+    // initial load
+    fetchUserBills();
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation]);
+
+  async function fetchUserBills() {
+    setLoadingBills(true);
+    try {
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setBills([]);
+        setLoadingBills(false);
+        return;
+      }
+
+      // Select bill rows and include the related profile (user) fields so
+      // we can autofill recipient_name / email when admin didn't store them on the bill row.
+      // This requires the foreign key relation (bills.user_id -> profile.id) exists in the DB.
+      const { data, error } = await supabase
+        .from('bills')
+        .select('*, profile (id, fullname, email, account_number)')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .order('due_date', { ascending: true });
+
+      if (error) throw error;
+      setBills(data || []);
+    } catch (e) {
+      console.error('Failed to load bills for notifications', e);
+      setBills([]);
+    } finally {
+      setLoadingBills(false);
+    }
+  }
 
   const getNotificationIcon = (type) => {
     switch (type) {
@@ -105,6 +121,74 @@ export default function NotificationScreen({ navigation }) {
       </LinearGradient>
 
       <ScrollView style={styles.content}>
+        {/* Render admin-created bills as actionable notifications */}
+        {bills.map((bill) => {
+          const iconData = getNotificationIcon('reminder');
+          return (
+            <TouchableOpacity
+              key={bill.id}
+              style={[styles.notificationItem, styles.unreadNotification]}
+              onPress={() => {
+                navigation.navigate('PayBills', {
+                  fromBill: true,
+                  billId: bill.id,
+                  bill_type: bill.bill_type,
+                  amount: bill.amount,
+                  due_date: bill.due_date,
+                  provider: bill.provider || null,
+                  reference: bill.reference || null,
+                  // Prefer explicit recipient fields stored on the bill, fallback to joined profile
+                  recipient_name: bill.recipient_name || bill.profile?.fullname || null,
+                  recipient_email: bill.recipient_email || bill.profile?.email || null,
+                  account_number: bill.account_number || bill.profile?.account_number || null,
+                  user_id: bill.user_id || null,
+                });
+              }}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: getNotificationColor('reminder') }]}>
+                <Ionicons name={iconData.name} size={24} color={iconData.color} />
+              </View>
+                <View style={styles.notificationContent}>
+                  <View style={styles.notificationHeader}>
+                    <Text style={styles.notificationTitle}>{bill.bill_type || 'Bill Due'}</Text>
+                    <Text style={styles.notificationTime}>{bill.due_date ? new Date(bill.due_date).toLocaleDateString() : 'Due date N/A'}</Text>
+                  </View>
+                  <Text style={styles.notificationMessage}>You have a bill of ₱{Number(bill.amount ?? 0).toLocaleString()} due {bill.due_date ? new Date(bill.due_date).toLocaleDateString() : ''}</Text>
+
+                  {/* Small inline Pay Now button that opens PayBills and auto-opens confirmation */}
+                  <View style={{ marginTop: 10, flexDirection: 'row' }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        navigation.navigate('PayBills', {
+                          fromBill: true,
+                          billId: bill.id,
+                          bill_type: bill.bill_type,
+                          amount: bill.amount,
+                          due_date: bill.due_date,
+                          provider: bill.provider || null,
+                          reference: bill.reference || null,
+                          recipient_name: bill.recipient_name || null,
+                          recipient_email: bill.recipient_email || null,
+                          user_id: bill.user_id || null,
+                          autoConfirm: true,
+                        });
+                      }}
+                      style={{
+                        backgroundColor: '#0D7A5F',
+                        paddingVertical: 8,
+                        paddingHorizontal: 14,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ color: 'white', fontWeight: '600' }}>Pay Now</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+            </TouchableOpacity>
+          );
+        })}
+
+        {/* Other static notifications */}
         {notifications.map((notification) => {
           const iconData = getNotificationIcon(notification.type);
           return (

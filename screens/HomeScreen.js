@@ -1,19 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    Dimensions,
-    Image,
-    ImageBackground,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Dimensions,
+  Image,
+  ImageBackground,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { supabase } from '../supabase';
 
@@ -21,8 +21,15 @@ const { width } = Dimensions.get('window');
 
 export default function HomeScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
-  const [monthlyExpenses, setMonthlyExpenses] = useState(0);
+  const [monthlyBillsCount, setMonthlyBillsCount] = useState(0);
   const [weeklySpending, setWeeklySpending] = useState(0);
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d;
+  });
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [expenseItems, setExpenseItems] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -32,6 +39,11 @@ export default function HomeScreen({ navigation }) {
       fetchAll();
     }, [])
   );
+
+  useEffect(() => {
+    // When month or category changes, re-fetch expenses part
+    fetchExpensesForMonth();
+  }, [selectedMonth, selectedCategory]);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -57,17 +69,8 @@ export default function HomeScreen({ navigation }) {
       }
       setProfile(profileData);
 
-      // 3. Fetch monthly expenses
-      const firstDayOfMonth = new Date();
-      firstDayOfMonth.setDate(1);
-      const { data: monthData } = await supabase
-        .from('expenses')
-        .select('amount')
-        .eq('user_id', user.id)
-        .eq('type', 'expense')
-        .gte('date', firstDayOfMonth.toISOString().slice(0, 10));
-      const monthTotal = monthData ? monthData.reduce((sum, row) => sum + Number(row.amount), 0) : 0;
-      setMonthlyExpenses(monthTotal);
+      // 3. Fetch monthly expenses from bills table (use due_date)
+      await fetchExpensesForMonth();
 
       // 4. Fetch weekly spending
       const now = new Date();
@@ -85,16 +88,55 @@ export default function HomeScreen({ navigation }) {
       // 5. Fetch recent transactions
       const { data: txData } = await supabase
         .from('transactions')
-        .select('type, amount, description, created_at, status, counterparty, recipient_name') // <-- add recipient_name here
+        .select('type, amount, description, created_at, status, counterparty, recipient_name')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(10);
       setTransactions(txData || []);
+      // Also fetch expense items for the current selected month
+      await fetchExpensesForMonth();
     } catch (error) {
       console.error('Error fetching home data:', error);
       Alert.alert('Error', 'Could not fetch home data.');
     }
     setLoading(false);
+  };
+
+  // Fetch expenses for the selected month and category
+  const fetchExpensesForMonth = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const start = new Date(selectedMonth);
+      start.setDate(1);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 1);
+      end.setDate(0);
+
+      // Query bills where created_at is within the selected month
+      let query = supabase
+        .from('bills')
+        .select('id, amount, bill_type, provider, reference, recipient_name, created_at')
+        .eq('user_id', user.id)
+        .gte('created_at', start.toISOString().slice(0, 10))
+        .lte('created_at', end.toISOString().slice(0, 10))
+        .order('created_at', { ascending: false });
+
+      if (selectedCategory && selectedCategory !== 'all') {
+        // Treat selectedCategory as bill_type when filtering bills
+        query = query.eq('bill_type', selectedCategory);
+      }
+
+      const { data } = await query;
+      const items = data || [];
+      setExpenseItems(items);
+
+      // Update monthly bills count based on returned bills
+      setMonthlyBillsCount(items.length);
+    } catch (err) {
+      console.error('Failed to fetch expenses for month:', err);
+    }
   };
 
   // Handle logout
@@ -215,9 +257,9 @@ export default function HomeScreen({ navigation }) {
         {/* Statistics Cards Row */}
         <View style={styles.statsRow}>
           <View style={[styles.statsCard, styles.expensesCard]}>
-            <Text style={styles.statsLabel}>Monthly Expenses</Text>
+            <Text style={styles.statsLabel}>Monthly Bills</Text>
             <Text style={styles.statsAmount}>
-              ₱{Number(monthlyExpenses).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {monthlyBillsCount} bills
             </Text>
             <View style={styles.chartContainer}>
               <View style={[styles.bar, { height: 30 }]} />
@@ -237,70 +279,63 @@ export default function HomeScreen({ navigation }) {
             </View>
 
             <View style={styles.statsCard}>
-              <Text style={styles.statsLabel}>Coin Balance</Text>
-              <Text style={styles.statsAmount}>
-                {profile ? profile.coin_balance : 0}
-              </Text>
+              <Text style={styles.statsLabel}>Filters</Text>
+              <View style={{ marginTop: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <TouchableOpacity onPress={() => {
+                    const m = new Date(selectedMonth);
+                    m.setMonth(m.getMonth() - 1);
+                    setSelectedMonth(m);
+                  }}>
+                    <Text style={{ fontSize: 18 }}>{'<'}</Text>
+                  </TouchableOpacity>
+                  <Text style={{ fontWeight: '600' }}>{selectedMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' })}</Text>
+                  <TouchableOpacity onPress={() => {
+                    const m = new Date(selectedMonth);
+                    m.setMonth(m.getMonth() + 1);
+                    setSelectedMonth(m);
+                  }}>
+                    <Text style={{ fontSize: 18 }}>{'>'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ marginTop: 10, flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity onPress={() => setSelectedCategory('all')} style={[styles.filterButton, selectedCategory === 'all' && styles.filterButtonActive]}>
+                    <Text>All</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setSelectedCategory('food')} style={[styles.filterButton, selectedCategory === 'food' && styles.filterButtonActive]}>
+                    <Text>Food</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setSelectedCategory('transport')} style={[styles.filterButton, selectedCategory === 'transport' && styles.filterButtonActive]}>
+                    <Text>Transport</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
           </View>
         </View>
 
-        {/* Recent Activity Section */}
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Expenses</Text>
         <ScrollView style={styles.scrollableSection} showsVerticalScrollIndicator={false}>
           <View style={styles.recentActivityContainer}>
-            {transactions.length === 0 && (
-              <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>No recent transactions.</Text>
+            {expenseItems.length === 0 && (
+              <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>No expenses for this month.</Text>
             )}
-            {transactions.map((tx, idx) => {
-              const getTransactionIcon = (type) => {
-                switch(type) {
-                  case 'received':
-                    return { name: 'arrow-down-circle', color: '#10B981' };
-                  case 'transfer':
-                    return { name: 'arrow-up-circle', color: '#EF4444' };
-                  case 'bill':
-                    return { name: 'receipt', color: '#F59E0B' };
-                  default:
-                    return { name: 'swap-horizontal', color: '#6B7280' };
-                }
-              };
-              const iconData = getTransactionIcon(tx.type);
-              return (
-                <View style={styles.transactionItem} key={idx}>
-                  <View style={styles.transactionLeft}>
-                    <View style={[
-                      styles.transactionIcon,
-                      tx.type === 'received' ? styles.receivedIcon : styles.transferIcon
-                    ]}>
-                      <Ionicons name={iconData.name} size={24} color={iconData.color} />
-                    </View>
-                    <View>
-                    <Text style={styles.transactionTitle}>
-                      {tx.type === 'transfer'
-                        ? `Transfer to ${tx.recipient_name || tx.counterparty}`
-                        : tx.description || (tx.type === 'received'
-                            ? 'Money Received'
-                            : tx.type === 'transfer'
-                              ? 'Bank Transfer'
-                              : tx.type)}
-                    </Text>
-                    <Text style={styles.transactionDate}>
-                      {new Date(tx.created_at).toLocaleString()}
-                    </Text>
+            {expenseItems.map((e, idx) => (
+              <View style={styles.transactionItem} key={e.id || idx}>
+                <View style={styles.transactionLeft}>
+                  <View style={[styles.transactionIcon, styles.receivedIcon]}>
+                    <Ionicons name="receipt" size={20} color="#10B981" />
+                  </View>
+                  <View>
+                    <Text style={styles.transactionTitle}>{e.description || e.bill_type || e.provider}</Text>
+                    <Text style={styles.transactionDate}>{new Date(e.created_at || e.due_date || e.date).toLocaleDateString()}</Text>
                   </View>
                 </View>
-                <Text style={[
-                  styles.transactionAmount,
-                  Number(tx.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount
-                ]}>
-                  {Number(tx.amount) >= 0 ? '+' : '-'}{Math.abs(Number(tx.amount)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </Text>
+                <Text style={[styles.transactionAmount, Number(e.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount]}>₱{Number(e.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
               </View>
-            );
-            })}
-            
-            {/* Spacer to push content above tab bar */}
+            ))}
+
             <View style={{ height: 80 }} />
           </View>
         </ScrollView>
@@ -537,6 +572,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     marginTop: 2,
+  },
+  filterButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+  },
+  filterButtonActive: {
+    backgroundColor: '#D1FAE5',
   },
   transactionAmount: {
     fontSize: 16,
