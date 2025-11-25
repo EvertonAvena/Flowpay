@@ -104,6 +104,22 @@ export default function PayBillsScreen({ navigation, route }) {
   const modalAnimation = useRef(new Animated.Value(0)).current;
   const providerModalAnimation = useRef(new Animated.Value(0)).current;
 
+  // addMonths helper
+  // - Adds `months` to `dateInput` while attempting to preserve the original day-of-month.
+  // - Handles month overflow (e.g., adding 1 month to Jan 31) by moving to the
+  //   last valid day of the target month rather than rolling into the following month.
+  // This keeps due dates like Nov 22 -> Dec 22 -> Jan 22 instead of shifting days.
+  const addMonths = (dateInput, months) => {
+    const d = new Date(dateInput);
+    const day = d.getDate();
+    d.setMonth(d.getMonth() + months);
+    // If month overflow occurred (e.g., Jan 31 -> Mar 3), set to last day of previous month
+    if (d.getDate() < day) {
+      d.setDate(0);
+    }
+    return d;
+  };
+
   // Function to reset all form fields
   const resetForm = () => {
     setBillerReference('');
@@ -382,14 +398,47 @@ export default function PayBillsScreen({ navigation, route }) {
 
         if (updateBillError) throw updateBillError;
       } else {
+        // Compute due date for insertion.
+        // - For recurring categories (internet, cable, others, water, electricity) we look up the most
+        //   recent bill for this user and same bill_type and set the new due date
+        //   to one month after that bill's due_date. This way duplicate payments
+        //   advance the subscription to the next billing month (e.g., Dec 22 -> Jan 22).
+        // - If there's no previous bill, we set due_date to one month from today.
+        // - For non-recurring categories the due_date remains today's date.
+        const recurringCats = ['internet', 'cable', 'others', 'water', 'electricity'];
+        let dueDateStr;
+        // Use provider name for bill_type
+        const billType = selectedProvider?.name || selectedCategory?.name;
+        if (recurringCats.includes(selectedCategory.id)) {
+          const { data: lastBills, error: lastBillError } = await supabase
+            .from('bills')
+            .select('due_date')
+            .eq('user_id', user.id)
+            .eq('bill_type', billType)
+            .order('due_date', { ascending: false })
+            .limit(1);
+
+          if (lastBillError) {
+            throw lastBillError;
+          }
+
+          if (lastBills && lastBills.length > 0 && lastBills[0].due_date) {
+            dueDateStr = addMonths(new Date(lastBills[0].due_date), 1).toISOString().split('T')[0];
+          } else {
+            dueDateStr = addMonths(new Date(), 1).toISOString().split('T')[0];
+          }
+        } else {
+          dueDateStr = new Date().toISOString().split('T')[0];
+        }
+
         const { error: billError } = await supabase
           .from('bills')
           .insert([
             {
               user_id: user.id,
-              bill_type: selectedCategory?.name,
+              bill_type: billType,
               amount: paymentAmount,
-              due_date: new Date().toISOString().split('T')[0], // Today's date
+              due_date: dueDateStr,
               status: 'paid',
             }
           ]);
