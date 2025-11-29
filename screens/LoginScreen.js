@@ -413,14 +413,14 @@ export default function LoginScreen({ navigation }) {
           </TouchableOpacity>
 
           {/* Sign Up Link */}
-          <View style={styles.signupContainer}>
+          {/* <View style={styles.signupContainer}>
             <Text style={styles.signupPromptText}>Don't have an account? </Text>
             <TouchableOpacity 
               onPress={() => navigation.navigate('Signup')}
             >
               <Text style={styles.signupLinkText}>Sign Up</Text>
             </TouchableOpacity>
-          </View>
+          </View> */}
           
           {/* Fingerprint login - Show whenever biometric is supported */}
           {isBiometricSupported && (

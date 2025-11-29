@@ -61,7 +61,7 @@ export default function NextScreen3({ navigation }) {
         {/* Continue Button */}
         <TouchableOpacity 
           style={styles.continueButton}
-          onPress={() => navigation && navigation.navigate('Signup')}
+          onPress={() => navigation && navigation.navigate('Login')}
         >
           <Text style={styles.continueText}>CONTINUE</Text>
         </TouchableOpacity>
