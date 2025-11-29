@@ -2,19 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
-import {
-  Alert,
-  Dimensions,
-  Image,
-  ImageBackground,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native';
+import { RefreshControl, Modal, Alert, Dimensions, Image, ImageBackground, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
@@ -23,6 +11,9 @@ export default function HomeScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
   const [monthlyBillsCount, setMonthlyBillsCount] = useState(0);
   const [weeklySpending, setWeeklySpending] = useState(0);
+  const [weeklyItems, setWeeklyItems] = useState([]);
+  const [showMonthlyModal, setShowMonthlyModal] = useState(false);
+  const [showWeeklyModal, setShowWeeklyModal] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     d.setDate(1);
@@ -30,6 +21,9 @@ export default function HomeScreen({ navigation }) {
   });
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [expenseItems, setExpenseItems] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState(null);
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -78,12 +72,13 @@ export default function HomeScreen({ navigation }) {
       firstDayOfWeek.setDate(now.getDate() - now.getDay());
       const { data: weekData } = await supabase
         .from('expenses')
-        .select('amount')
+        .select('id, amount, description, provider, reference, date, created_at')
         .eq('user_id', user.id)
         .eq('type', 'expense')
         .gte('date', firstDayOfWeek.toISOString().slice(0, 10));
       const weekTotal = weekData ? weekData.reduce((sum, row) => sum + Number(row.amount), 0) : 0;
       setWeeklySpending(weekTotal);
+      setWeeklyItems(weekData || []);
 
       // 5. Fetch recent transactions
       const { data: txData } = await supabase
@@ -105,6 +100,7 @@ export default function HomeScreen({ navigation }) {
   // Fetch expenses for the selected month and category
   const fetchExpensesForMonth = async () => {
     try {
+      setRefreshing(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -137,6 +133,34 @@ export default function HomeScreen({ navigation }) {
     } catch (err) {
       console.error('Failed to fetch expenses for month:', err);
     }
+    finally {
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchAll();
+    setRefreshing(false);
+  };
+
+  const formatCurrency = (value) => {
+    const n = Number(value) || 0;
+    return `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const formatDate = (d) => {
+    if (!d) return '-';
+    try {
+      return new Date(d).toLocaleDateString();
+    } catch (e) {
+      return d;
+    }
+  };
+
+  const openExpenseDetail = (item) => {
+    setSelectedExpense(item);
+    setShowExpenseModal(true);
   };
 
   // Handle logout
@@ -222,7 +246,7 @@ export default function HomeScreen({ navigation }) {
         </SafeAreaView>
 
         {/* Balance Section */}
-        <View style={styles.balanceSection}>
+          <View style={styles.balanceSection}>
           <Text style={styles.balanceLabel}>Balance</Text>
           <View style={styles.balanceRow}>
             <Text style={styles.balanceAmount}>
@@ -256,7 +280,7 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.mainContent}>
         {/* Statistics Cards Row */}
         <View style={styles.statsRow}>
-          <View style={[styles.statsCard, styles.expensesCard]}>
+          <TouchableOpacity style={[styles.statsCard, styles.expensesCard]} onPress={() => setShowMonthlyModal(true)} activeOpacity={0.9}>
             <Text style={styles.statsLabel}>Monthly Bills</Text>
             <Text style={styles.statsAmount}>
               {monthlyBillsCount} bills
@@ -268,15 +292,15 @@ export default function HomeScreen({ navigation }) {
               <View style={[styles.bar, { height: 50 }]} />
               <View style={[styles.bar, { height: 35 }]} />
             </View>
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.rightColumn}>
-            <View style={styles.statsCard}>
+            <TouchableOpacity style={styles.statsCard} onPress={() => setShowWeeklyModal(true)} activeOpacity={0.9}>
               <Text style={styles.statsLabel}>Weekly Spending</Text>
               <Text style={styles.statsAmount}>
                 ₱{Number(weeklySpending).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
-            </View>
+            </TouchableOpacity>
 
             <View style={styles.statsCard}>
               <Text style={styles.statsLabel}>Filters</Text>
@@ -299,15 +323,15 @@ export default function HomeScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
 
-                <View style={{ marginTop: 10, flexDirection: 'row', gap: 8 }}>
+                <View style={[styles.filtersContainer, { marginTop: 10 }]}>
                   <TouchableOpacity onPress={() => setSelectedCategory('all')} style={[styles.filterButton, selectedCategory === 'all' && styles.filterButtonActive]}>
-                    <Text>All</Text>
+                    <Text style={[styles.filterButtonText, selectedCategory === 'all' && styles.filterButtonTextActive]}>All</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => setSelectedCategory('food')} style={[styles.filterButton, selectedCategory === 'food' && styles.filterButtonActive]}>
-                    <Text>Food</Text>
+                    <Text style={[styles.filterButtonText, selectedCategory === 'food' && styles.filterButtonTextActive]}>Food</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => setSelectedCategory('transport')} style={[styles.filterButton, selectedCategory === 'transport' && styles.filterButtonActive]}>
-                    <Text>Transport</Text>
+                    <Text style={[styles.filterButtonText, selectedCategory === 'transport' && styles.filterButtonTextActive]}>Transport</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -316,24 +340,121 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Expenses</Text>
-        <ScrollView style={styles.scrollableSection} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scrollableSection}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
           <View style={styles.recentActivityContainer}>
             {expenseItems.length === 0 && (
               <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>No expenses for this month.</Text>
             )}
+            {/* Expense detail modal */}
+            <Modal
+              visible={showExpenseModal}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowExpenseModal(false)}
+            >
+              <View style={styles.expenseModalBackground}>
+                <View style={styles.expenseModalCard}>
+                  <Text style={styles.expenseModalTitle}>{selectedExpense?.description || selectedExpense?.bill_type || 'Expense Detail'}</Text>
+                  <View style={styles.expenseModalRow}>
+                    <Text style={styles.expenseModalLabel}>Amount</Text>
+                    <Text style={styles.expenseModalValue}>{formatCurrency(selectedExpense?.amount)}</Text>
+                  </View>
+                  <View style={styles.expenseModalRow}>
+                    <Text style={styles.expenseModalLabel}>Date</Text>
+                    <Text style={styles.expenseModalValue}>{formatDate(selectedExpense?.created_at || selectedExpense?.due_date || selectedExpense?.date)}</Text>
+                  </View>
+                  <View style={styles.expenseModalRow}>
+                    <Text style={styles.expenseModalLabel}>Provider</Text>
+                    <Text style={styles.expenseModalValue}>{selectedExpense?.provider || '-'}</Text>
+                  </View>
+                  <View style={styles.expenseModalRow}>
+                    <Text style={styles.expenseModalLabel}>Reference</Text>
+                    <Text style={styles.expenseModalValue}>{selectedExpense?.reference || '-'}</Text>
+                  </View>
+                  <View style={{ marginTop: 16, alignItems: 'flex-end' }}>
+                    <TouchableOpacity style={[styles.button, { paddingHorizontal: 18 }]} onPress={() => setShowExpenseModal(false)}>
+                      <Text style={styles.buttonText}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
+            {/* Monthly bills modal */}
+            <Modal visible={showMonthlyModal} transparent animationType="slide" onRequestClose={() => setShowMonthlyModal(false)}>
+              <View style={styles.expenseModalBackground}>
+                <View style={styles.expenseModalCard}>
+                  <Text style={styles.expenseModalTitle}>Monthly Bills ({monthlyBillsCount})</Text>
+                  <View style={{ maxHeight: 320 }}>
+                    {(expenseItems || []).map((b, i) => (
+                      <View key={b.id || i} style={styles.modalListItem}>
+                        <View style={styles.modalListLeft}>
+                          <Text style={styles.modalListTitle}>{b.bill_type || b.provider || 'Bill'}</Text>
+                          <Text style={styles.modalListSubtitle}>{formatDate(b.created_at || b.due_date || b.date)} • {b.reference || ''}</Text>
+                        </View>
+                        <Text style={[styles.transactionAmount, Number(b.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount]}>{formatCurrency(b.amount)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={{ marginTop: 12, alignItems: 'flex-end' }}>
+                    <TouchableOpacity style={[styles.button, { paddingHorizontal: 18 }]} onPress={() => setShowMonthlyModal(false)}>
+                      <Text style={styles.buttonText}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
+
+            {/* Weekly spending modal */}
+            <Modal visible={showWeeklyModal} transparent animationType="slide" onRequestClose={() => setShowWeeklyModal(false)}>
+              <View style={styles.expenseModalBackground}>
+                <View style={styles.expenseModalCard}>
+                  <Text style={styles.expenseModalTitle}>Weekly Spending</Text>
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ color: '#666' }}>Total: <Text style={{ fontWeight: '700', color: '#111' }}>{formatCurrency(weeklySpending)}</Text></Text>
+                  </View>
+                  <View style={{ maxHeight: 320 }}>
+                    {(weeklyItems || []).map((w, i) => (
+                      <View key={w.id || i} style={styles.modalListItem}>
+                        <View style={styles.modalListLeft}>
+                          <Text style={styles.modalListTitle}>{w.description || w.provider || 'Expense'}</Text>
+                          <Text style={styles.modalListSubtitle}>{formatDate(w.date || w.created_at)}</Text>
+                        </View>
+                        <Text style={[styles.transactionAmount, Number(w.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount]}>{formatCurrency(w.amount)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={{ marginTop: 12, alignItems: 'flex-end' }}>
+                    <TouchableOpacity style={[styles.button, { paddingHorizontal: 18 }]} onPress={() => setShowWeeklyModal(false)}>
+                      <Text style={styles.buttonText}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
+
             {expenseItems.map((e, idx) => (
-              <View style={styles.transactionItem} key={e.id || idx}>
+              <TouchableOpacity
+                key={e.id || idx}
+                style={styles.transactionItem}
+                activeOpacity={0.8}
+                onPress={() => openExpenseDetail(e)}
+              >
                 <View style={styles.transactionLeft}>
                   <View style={[styles.transactionIcon, styles.receivedIcon]}>
                     <Ionicons name="receipt" size={20} color="#10B981" />
                   </View>
-                  <View>
-                    <Text style={styles.transactionTitle}>{e.description || e.bill_type || e.provider}</Text>
-                    <Text style={styles.transactionDate}>{new Date(e.created_at || e.due_date || e.date).toLocaleDateString()}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.transactionTitle}>{e.description || e.bill_type || e.provider || 'Expense'}</Text>
+                    <Text style={styles.transactionDate}>{formatDate(e.created_at || e.due_date || e.date)}</Text>
+                    <Text style={styles.transactionMeta} numberOfLines={1} ellipsizeMode="tail">{e.provider ? `Provider: ${e.provider}` : e.reference ? `Ref: ${e.reference}` : ''}</Text>
                   </View>
                 </View>
-                <Text style={[styles.transactionAmount, Number(e.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount]}>₱{Number(e.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-              </View>
+                <Text style={[styles.transactionAmount, Number(e.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount]}>{formatCurrency(e.amount)}</Text>
+              </TouchableOpacity>
             ))}
 
             <View style={{ height: 80 }} />
@@ -433,7 +554,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 5,
     marginTop: -25,
-    gap: 20, // Moderate space between the two buttons
+    // use margin on children for spacing instead of unsupported `gap`
   },
   actionButton: {
     backgroundColor: 'white',
@@ -443,6 +564,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     width: width * 0.4,
+    marginRight: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
@@ -496,7 +618,7 @@ const styles = StyleSheet.create({
     width: '47%',
     justifyContent: 'space-between',
     height: 180,
-    gap: 15, // Adds spacing between Weekly Spending and Coin Balance
+    // spacing handled by justifyContent and margins
   },
   statsLabel: {
     color: '#666',
@@ -525,6 +647,43 @@ const styles = StyleSheet.create({
   recentActivityContainer: {
     marginBottom: 100,
   },
+  expenseModalBackground: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  expenseModalCard: {
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 20,
+  },
+  expenseModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111',
+    marginBottom: 8,
+  },
+  expenseModalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 6,
+  },
+  expenseModalLabel: { color: '#666', fontSize: 13 },
+  expenseModalValue: { color: '#111', fontSize: 14, fontWeight: '600' },
+  modalListItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  modalListLeft: { flex: 1 },
+  modalListTitle: { fontWeight: '600', color: '#111' },
+  modalListSubtitle: { color: '#666', fontSize: 12, marginTop: 4 },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -573,14 +732,36 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 2,
   },
+  transactionMeta: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 4,
+  },
   filterButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     backgroundColor: '#F3F4F6',
     borderRadius: 12,
+    marginRight: 8,
   },
   filterButtonActive: {
     backgroundColor: '#D1FAE5',
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  filterButtonText: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '600',
+  },
+  filterButtonTextActive: {
+    color: '#065F46',
+  },
+  filtersContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    // allow buttons to wrap on small screens
+    flexWrap: 'wrap',
   },
   transactionAmount: {
     fontSize: 16,

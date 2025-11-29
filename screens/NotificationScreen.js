@@ -23,9 +23,6 @@ export default function NotificationScreen({ navigation }) {
   useEffect(() => {
     setNotifications([
       { id: 'n1', title: 'Payment Received', message: 'You have received ₱50.00 from John Doe', time: '2 hours ago', isRead: false, type: 'transaction' },
-      { id: 'n2', title: 'Weekly Summary', message: 'Your spending this week was 15% less than last week. Great job!', time: '1 day ago', isRead: true, type: 'summary' },
-      { id: 'n4', title: 'Security Alert', message: 'A new device was used to log into your account', time: '3 days ago', isRead: true, type: 'security' },
-      { id: 'n5', title: 'Promotion', message: 'Transfer money with zero fees this weekend!', time: '5 days ago', isRead: true, type: 'promo' },
     ]);
   }, []);
 
