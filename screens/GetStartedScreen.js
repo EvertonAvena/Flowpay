@@ -119,9 +119,9 @@ export default function GetStartedScreen({ navigation }) {
             </Text>
           </LinearGradient>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.haveAccountButton} onPress={handleHaveAccount}>
+        {/* <TouchableOpacity style={styles.haveAccountButton} onPress={handleHaveAccount}>
           <Text style={styles.haveAccountText}>I ALREADY HAVE AN ACCOUNT</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </LinearGradient>
     </View>
   );
