@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
-import { RefreshControl, Modal, Alert, Dimensions, Image, ImageBackground, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Dimensions, Image, ImageBackground, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
@@ -26,6 +26,7 @@ export default function HomeScreen({ navigation }) {
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [balanceVisible, setBalanceVisible] = useState(true);
 
   // Replace useEffect with useFocusEffect for real-time refresh
   useFocusEffect(
@@ -250,10 +251,19 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.balanceLabel}>Balance</Text>
           <View style={styles.balanceRow}>
             <Text style={styles.balanceAmount}>
-              ₱{profile ? Number(profile.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+              {balanceVisible 
+                ? `₱${profile ? Number(profile.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}`
+                : '₱••••••'}
             </Text>
-            <TouchableOpacity style={styles.infoButton}>
-              <Text style={styles.infoButtonText}>?</Text>
+            <TouchableOpacity 
+              style={styles.infoButton}
+              onPress={() => setBalanceVisible(!balanceVisible)}
+            >
+              <Ionicons 
+                name={balanceVisible ? 'eye-off' : 'eye'} 
+                size={16} 
+                color="white" 
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -276,191 +286,6 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Main Content Area */}
-      <View style={styles.mainContent}>
-        {/* Statistics Cards Row */}
-        <View style={styles.statsRow}>
-          <TouchableOpacity style={[styles.statsCard, styles.expensesCard]} onPress={() => setShowMonthlyModal(true)} activeOpacity={0.9}>
-            <Text style={styles.statsLabel}>Monthly Bills</Text>
-            <Text style={styles.statsAmount}>
-              {monthlyBillsCount} bills
-            </Text>
-            <View style={styles.chartContainer}>
-              <View style={[styles.bar, { height: 30 }]} />
-              <View style={[styles.bar, { height: 60 }]} />
-              <View style={[styles.bar, { height: 40 }]} />
-              <View style={[styles.bar, { height: 50 }]} />
-              <View style={[styles.bar, { height: 35 }]} />
-            </View>
-          </TouchableOpacity>
-
-          <View style={styles.rightColumn}>
-            <TouchableOpacity style={styles.statsCard} onPress={() => setShowWeeklyModal(true)} activeOpacity={0.9}>
-              <Text style={styles.statsLabel}>Weekly Spending</Text>
-              <Text style={styles.statsAmount}>
-                ₱{Number(weeklySpending).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.statsCard}>
-              <Text style={styles.statsLabel}>Filters</Text>
-              <View style={{ marginTop: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <TouchableOpacity onPress={() => {
-                    const m = new Date(selectedMonth);
-                    m.setMonth(m.getMonth() - 1);
-                    setSelectedMonth(m);
-                  }}>
-                    <Text style={{ fontSize: 18 }}>{'<'}</Text>
-                  </TouchableOpacity>
-                  <Text style={{ fontWeight: '600' }}>{selectedMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' })}</Text>
-                  <TouchableOpacity onPress={() => {
-                    const m = new Date(selectedMonth);
-                    m.setMonth(m.getMonth() + 1);
-                    setSelectedMonth(m);
-                  }}>
-                    <Text style={{ fontSize: 18 }}>{'>'}</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={[styles.filtersContainer, { marginTop: 10 }]}>
-                  <TouchableOpacity onPress={() => setSelectedCategory('all')} style={[styles.filterButton, selectedCategory === 'all' && styles.filterButtonActive]}>
-                    <Text style={[styles.filterButtonText, selectedCategory === 'all' && styles.filterButtonTextActive]}>All</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setSelectedCategory('food')} style={[styles.filterButton, selectedCategory === 'food' && styles.filterButtonActive]}>
-                    <Text style={[styles.filterButtonText, selectedCategory === 'food' && styles.filterButtonTextActive]}>Food</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setSelectedCategory('transport')} style={[styles.filterButton, selectedCategory === 'transport' && styles.filterButtonActive]}>
-                    <Text style={[styles.filterButtonText, selectedCategory === 'transport' && styles.filterButtonTextActive]}>Transport</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Expenses</Text>
-        <ScrollView
-          style={styles.scrollableSection}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          <View style={styles.recentActivityContainer}>
-            {expenseItems.length === 0 && (
-              <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>No expenses for this month.</Text>
-            )}
-            {/* Expense detail modal */}
-            <Modal
-              visible={showExpenseModal}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShowExpenseModal(false)}
-            >
-              <View style={styles.expenseModalBackground}>
-                <View style={styles.expenseModalCard}>
-                  <Text style={styles.expenseModalTitle}>{selectedExpense?.description || selectedExpense?.bill_type || 'Expense Detail'}</Text>
-                  <View style={styles.expenseModalRow}>
-                    <Text style={styles.expenseModalLabel}>Amount</Text>
-                    <Text style={styles.expenseModalValue}>{formatCurrency(selectedExpense?.amount)}</Text>
-                  </View>
-                  <View style={styles.expenseModalRow}>
-                    <Text style={styles.expenseModalLabel}>Date</Text>
-                    <Text style={styles.expenseModalValue}>{formatDate(selectedExpense?.created_at || selectedExpense?.due_date || selectedExpense?.date)}</Text>
-                  </View>
-                  <View style={styles.expenseModalRow}>
-                    <Text style={styles.expenseModalLabel}>Provider</Text>
-                    <Text style={styles.expenseModalValue}>{selectedExpense?.provider || '-'}</Text>
-                  </View>
-                  <View style={styles.expenseModalRow}>
-                    <Text style={styles.expenseModalLabel}>Reference</Text>
-                    <Text style={styles.expenseModalValue}>{selectedExpense?.reference || '-'}</Text>
-                  </View>
-                  <View style={{ marginTop: 16, alignItems: 'flex-end' }}>
-                    <TouchableOpacity style={[styles.button, { paddingHorizontal: 18 }]} onPress={() => setShowExpenseModal(false)}>
-                      <Text style={styles.buttonText}>Close</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </Modal>
-            {/* Monthly bills modal */}
-            <Modal visible={showMonthlyModal} transparent animationType="slide" onRequestClose={() => setShowMonthlyModal(false)}>
-              <View style={styles.expenseModalBackground}>
-                <View style={styles.expenseModalCard}>
-                  <Text style={styles.expenseModalTitle}>Monthly Bills ({monthlyBillsCount})</Text>
-                  <View style={{ maxHeight: 320 }}>
-                    {(expenseItems || []).map((b, i) => (
-                      <View key={b.id || i} style={styles.modalListItem}>
-                        <View style={styles.modalListLeft}>
-                          <Text style={styles.modalListTitle}>{b.bill_type || b.provider || 'Bill'}</Text>
-                          <Text style={styles.modalListSubtitle}>{formatDate(b.created_at || b.due_date || b.date)} • {b.reference || ''}</Text>
-                        </View>
-                        <Text style={[styles.transactionAmount, Number(b.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount]}>{formatCurrency(b.amount)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  <View style={{ marginTop: 12, alignItems: 'flex-end' }}>
-                    <TouchableOpacity style={[styles.button, { paddingHorizontal: 18 }]} onPress={() => setShowMonthlyModal(false)}>
-                      <Text style={styles.buttonText}>Close</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </Modal>
-
-            {/* Weekly spending modal */}
-            <Modal visible={showWeeklyModal} transparent animationType="slide" onRequestClose={() => setShowWeeklyModal(false)}>
-              <View style={styles.expenseModalBackground}>
-                <View style={styles.expenseModalCard}>
-                  <Text style={styles.expenseModalTitle}>Weekly Spending</Text>
-                  <View style={{ marginBottom: 8 }}>
-                    <Text style={{ color: '#666' }}>Total: <Text style={{ fontWeight: '700', color: '#111' }}>{formatCurrency(weeklySpending)}</Text></Text>
-                  </View>
-                  <View style={{ maxHeight: 320 }}>
-                    {(weeklyItems || []).map((w, i) => (
-                      <View key={w.id || i} style={styles.modalListItem}>
-                        <View style={styles.modalListLeft}>
-                          <Text style={styles.modalListTitle}>{w.description || w.provider || 'Expense'}</Text>
-                          <Text style={styles.modalListSubtitle}>{formatDate(w.date || w.created_at)}</Text>
-                        </View>
-                        <Text style={[styles.transactionAmount, Number(w.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount]}>{formatCurrency(w.amount)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  <View style={{ marginTop: 12, alignItems: 'flex-end' }}>
-                    <TouchableOpacity style={[styles.button, { paddingHorizontal: 18 }]} onPress={() => setShowWeeklyModal(false)}>
-                      <Text style={styles.buttonText}>Close</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </Modal>
-
-            {expenseItems.map((e, idx) => (
-              <TouchableOpacity
-                key={e.id || idx}
-                style={styles.transactionItem}
-                activeOpacity={0.8}
-                onPress={() => openExpenseDetail(e)}
-              >
-                <View style={styles.transactionLeft}>
-                  <View style={[styles.transactionIcon, styles.receivedIcon]}>
-                    <Ionicons name="receipt" size={20} color="#10B981" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.transactionTitle}>{e.description || e.bill_type || e.provider || 'Expense'}</Text>
-                    <Text style={styles.transactionDate}>{formatDate(e.created_at || e.due_date || e.date)}</Text>
-                    <Text style={styles.transactionMeta} numberOfLines={1} ellipsizeMode="tail">{e.provider ? `Provider: ${e.provider}` : e.reference ? `Ref: ${e.reference}` : ''}</Text>
-                  </View>
-                </View>
-                <Text style={[styles.transactionAmount, Number(e.amount) >= 0 ? styles.positiveAmount : styles.negativeAmount]}>{formatCurrency(e.amount)}</Text>
-              </TouchableOpacity>
-            ))}
-
-            <View style={{ height: 80 }} />
-          </View>
-        </ScrollView>
-      </View>
     </ImageBackground>
   );
 }
@@ -482,6 +307,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 15,
     marginBottom: 10,
+    paddingTop:20,
   },
   logo: {
     width: 200,

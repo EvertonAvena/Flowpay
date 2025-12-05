@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import { Alert, Modal, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../supabase';
@@ -96,29 +98,57 @@ export default function TransferScreen({ navigation }) {
       if (updateRecipientError) throw updateRecipientError;
 
       // 6. Insert transaction for sender (save recipient_name)
-      const { error: txError } = await supabase.from('transactions').insert([{
+      console.log('Inserting sender transaction:', {
         user_id: senderProfile.id,
         type: 'transfer',
         amount: -transferAmount,
-        description: description || `Transfer to ${recipientAccountNumber}`,
+        recipient_name: recipientProfile.fullname,
+        counterparty: recipientAccountNumber
+      });
+      
+      const { data: senderTxData, error: txError } = await supabase.from('transactions').insert([{
+        user_id: senderProfile.id,
+        type: 'transfer',
+        amount: -transferAmount,
+        description: description || `Transfer to ${recipientProfile.fullname}`,
         status: 'completed',
         counterparty: recipientAccountNumber,
         recipient_name: recipientProfile.fullname,
         created_at: new Date().toISOString()
-      }]);
-      if (txError) throw txError;
+      }]).select();
+      
+      if (txError) {
+        console.error('Error inserting sender transaction:', txError);
+        throw txError;
+      }
+      console.log('Sender transaction inserted:', senderTxData);
 
-      // 7. (Optional) Insert transaction for recipient
-      await supabase.from('transactions').insert([{
+      // 7. Insert transaction for recipient
+      console.log('Inserting recipient transaction:', {
         user_id: recipientProfile.id,
         type: 'received',
         amount: transferAmount,
-        description: description || `Received from ${senderProfile.account_number}`,
+        recipient_name: senderProfile.fullname,
+        counterparty: senderProfile.account_number
+      });
+      
+      const { data: recipientTxData, error: txError2 } = await supabase.from('transactions').insert([{
+        user_id: recipientProfile.id,
+        type: 'received',
+        amount: transferAmount,
+        description: description || `Received from ${senderProfile.fullname}`,
         status: 'completed',
         counterparty: senderProfile.account_number,
         recipient_name: senderProfile.fullname,
         created_at: new Date().toISOString()
-      }]);
+      }]).select();
+      
+      if (txError2) {
+        console.error('Error inserting recipient transaction:', txError2);
+        // Don't throw here - sender transaction already succeeded
+      } else {
+        console.log('Recipient transaction inserted:', recipientTxData);
+      }
 
       // 8. Show receipt modal
       setReceipt({
@@ -136,38 +166,55 @@ export default function TransferScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Transfer</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Recipient Account Number"
-        value={recipientAccountNumber}
-        onChangeText={text => setRecipientAccountNumber(text.replace(/\s/g, ''))}
-        keyboardType="numeric"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Recipient Full Name (case-sensitive)"
-        value={recipientName}
-        onChangeText={setRecipientName}
-        autoCapitalize="words"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Amount"
-        value={amount}
-        onChangeText={setAmount}
-        keyboardType="numeric"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Description (optional)"
-        value={description}
-        onChangeText={setDescription}
-      />
-      <TouchableOpacity style={styles.button} onPress={handleTransfer}>
-        <Text style={styles.buttonText}>Send</Text>
-      </TouchableOpacity>
+    <View style={styles.container}>
+      <LinearGradient
+        colors={['#179C7D', '#179C7D', '#0088cc']}
+        style={styles.headerGradient}
+      >
+        <SafeAreaView style={styles.header}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Transfer</Text>
+          <View style={styles.backButton} />
+        </SafeAreaView>
+      </LinearGradient>
+
+      <View style={styles.content}>
+        <TextInput
+          style={styles.input}
+          placeholder="Recipient Account Number"
+          value={recipientAccountNumber}
+          onChangeText={text => setRecipientAccountNumber(text.replace(/\s/g, ''))}
+          keyboardType="numeric"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Recipient Full Name (case-sensitive)"
+          value={recipientName}
+          onChangeText={setRecipientName}
+          autoCapitalize="words"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Amount"
+          value={amount}
+          onChangeText={setAmount}
+          keyboardType="numeric"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Description (optional)"
+          value={description}
+          onChangeText={setDescription}
+        />
+        <TouchableOpacity style={styles.button} onPress={handleTransfer}>
+          <Text style={styles.buttonText}>Send</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Receipt Modal */}
       <Modal
@@ -266,12 +313,43 @@ export default function TransferScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', padding: 24, paddingTop: 90 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f5f5f5',
+  },
+  headerGradient: {
+    paddingTop: 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  content: {
+    flex: 1,
+    padding: 24,
+    paddingTop: 30,
+  },
   title: { fontSize: 28, fontWeight: 'bold', color: '#179C7D', marginBottom: 30, alignSelf: 'center' },
   input: {
     backgroundColor: 'white',

@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -11,14 +13,14 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  ActivityIndicator
+  View
 } from 'react-native';
 import { supabase } from '../supabase';
 
 export default function EditProfileScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [profile, setProfile] = useState({
     fullname: '',
     username: '',
@@ -61,7 +63,7 @@ export default function EditProfileScreen({ navigation }) {
         email: data.email || '',
         phone: data.phone || '',
         address: data.address || '',
-        birthdate: data.birthdate || ''
+        birthdate: data.birthdate ? data.birthdate.split('T')[0] : ''
       });
     } catch (error) {
       console.error('Error loading profile:', error);
@@ -87,15 +89,24 @@ export default function EditProfileScreen({ navigation }) {
         return;
       }
 
+      // Prepare update data, only include birthdate if it's a valid date
+      const updateData = {
+        fullname: profile.fullname,
+        username: profile.username,
+        email: profile.email,
+        phone: profile.phone,
+        address: profile.address,
+        updated_at: new Date().toISOString()
+      };
+
+      // Only add birthdate if it's not empty and has valid format
+      if (profile.birthdate && profile.birthdate.trim() !== '') {
+        updateData.birthdate = profile.birthdate;
+      }
+
       const { error } = await supabase
         .from('profile')
-        .update({
-          fullname: profile.fullname,
-          username: profile.username,
-          address: profile.address,
-          birthdate: profile.birthdate,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', user.id);
 
       if (error) {
@@ -184,23 +195,34 @@ export default function EditProfileScreen({ navigation }) {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Email</Text>
               <TextInput
-                style={[styles.input, styles.disabledInput]}
+                style={styles.input}
                 value={profile.email}
-                editable={false}
+                onChangeText={(text) => setProfile({ ...profile, email: text })}
+                placeholder="Enter your email"
                 placeholderTextColor="#999"
+                keyboardType="email-address"
+                autoCapitalize="none"
               />
-              <Text style={styles.helperText}>Email cannot be changed</Text>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Phone Number</Text>
               <TextInput
-                style={[styles.input, styles.disabledInput]}
+                style={styles.input}
                 value={profile.phone}
-                editable={false}
+                onChangeText={(text) => {
+                  // Only allow numbers and limit to 11 digits
+                  const numericText = text.replace(/[^0-9]/g, '');
+                  if (numericText.length <= 11) {
+                    setProfile({ ...profile, phone: numericText });
+                  }
+                }}
+                placeholder="Enter your phone number"
                 placeholderTextColor="#999"
+                keyboardType="phone-pad"
+                maxLength={11}
               />
-              <Text style={styles.helperText}>Phone number cannot be changed</Text>
+              <Text style={styles.helperText}>Maximum 11 digits</Text>
             </View>
 
             <View style={styles.inputGroup}>
@@ -218,13 +240,31 @@ export default function EditProfileScreen({ navigation }) {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Date of Birth</Text>
-              <TextInput
-                style={styles.input}
-                value={profile.birthdate}
-                onChangeText={(text) => setProfile({ ...profile, birthdate: text })}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#999"
-              />
+              <TouchableOpacity
+                style={styles.datePickerButton}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <Text style={profile.birthdate ? styles.dateText : styles.datePlaceholder}>
+                  {profile.birthdate || 'Select date of birth'}
+                </Text>
+                <Ionicons name="calendar-outline" size={20} color="#179C7D" />
+              </TouchableOpacity>
+              
+              {showDatePicker && (
+                <DateTimePicker
+                  value={profile.birthdate ? new Date(profile.birthdate) : new Date()}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(event, selectedDate) => {
+                    setShowDatePicker(Platform.OS === 'ios');
+                    if (selectedDate) {
+                      const formattedDate = selectedDate.toISOString().split('T')[0];
+                      setProfile({ ...profile, birthdate: formattedDate });
+                    }
+                  }}
+                  maximumDate={new Date()}
+                />
+              )}
             </View>
           </View>
 
@@ -345,6 +385,25 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 5,
     fontStyle: 'italic',
+  },
+  datePickerButton: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    backgroundColor: 'white',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  datePlaceholder: {
+    fontSize: 16,
+    color: '#999',
   },
   buttonContainer: {
     flexDirection: 'row',

@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   headerGradient: {
-    paddingTop: 40,
+    paddingTop: 20,
     paddingBottom: 20,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,

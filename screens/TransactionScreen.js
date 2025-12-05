@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import {
@@ -10,7 +11,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
@@ -40,6 +40,16 @@ export default function TransactionScreen({ navigation }) {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
+      
+      // Debug: Log transaction types to console
+      console.log('Fetched transactions:', data?.map(t => ({
+        id: t.id,
+        type: t.type,
+        amount: t.amount,
+        counterparty: t.counterparty,
+        recipient_name: t.recipient_name
+      })));
+      
       setTransactions(data || []);
     } catch (err) {
       setTransactions([]);
@@ -50,15 +60,22 @@ export default function TransactionScreen({ navigation }) {
   // Filter transactions based on active tab
   const filteredTransactions = transactions.filter(transaction => {
     if (activeTab === 'all') return true;
-    if (activeTab === 'income') return transaction.type === 'received';
-    if (activeTab === 'expense') return transaction.type === 'sent' || transaction.type === 'bill' || transaction.type === 'transfer';
+    
+    const amount = Number(transaction.amount);
+    const description = transaction.description || '';
+    const isReceivedByDescription = description.toLowerCase().includes('received from');
+    const isIncome = transaction.type === 'received' || amount > 0 || isReceivedByDescription;
+    
+    if (activeTab === 'income') return isIncome;
+    if (activeTab === 'expense') return !isIncome;
     return true;
   });
 
   // Helper for icon and color
   const getIcon = (type) => {
     if (type === 'received') return { icon: 'arrow-down-circle', bg: '#e3f7e8', color: '#10B981' };
-    if (type === 'sent' || type === 'transfer') return { icon: 'arrow-up-circle', bg: '#ffe0e0', color: '#EF4444' };
+    if (type === 'sent') return { icon: 'arrow-up-circle', bg: '#ffe0e0', color: '#EF4444' };
+    if (type === 'transfer') return { icon: 'arrow-up-circle', bg: '#ffe0e0', color: '#EF4444' };
     if (type === 'bill') return { icon: 'receipt', bg: '#fff2e0', color: '#F59E0B' };
     return { icon: 'swap-horizontal-outline', bg: '#ffe0e0', color: '#EF4444' };
   };
@@ -113,8 +130,51 @@ export default function TransactionScreen({ navigation }) {
 
         {/* Transaction List */}
         {filteredTransactions.map((transaction) => {
-          const { icon, bg, color } = getIcon(transaction.type);
-          const isIncome = transaction.type === 'received';
+          // Determine if this is income or expense based on type, amount, AND description
+          const amount = Number(transaction.amount);
+          const description = transaction.description || '';
+          
+          // Check if description indicates this is a received transaction
+          const isReceivedByDescription = description.toLowerCase().includes('received from');
+          
+          // A transaction is income if:
+          // 1. Type is 'received', OR
+          // 2. Amount is positive, OR  
+          // 3. Description says "Received from"
+          const isIncome = transaction.type === 'received' || amount > 0 || isReceivedByDescription;
+          
+          // Get icon based on income/expense
+          const iconData = isIncome 
+            ? { icon: 'arrow-down-circle', bg: '#e3f7e8', color: '#10B981' }
+            : transaction.type === 'bill'
+              ? { icon: 'receipt', bg: '#fff2e0', color: '#F59E0B' }
+              : { icon: 'arrow-up-circle', bg: '#ffe0e0', color: '#EF4444' };
+          
+          // Display amount: always positive for income, negative for expense
+          const displayAmount = isIncome ? Math.abs(amount) : -Math.abs(amount);
+          
+          // Determine proper description and counterparty display
+          let displayTitle = '';
+          let displaySubtitle = '';
+          
+          if (isIncome) {
+            // For income: recipient_name contains the SENDER's name
+            const senderName = transaction.recipient_name || 'Unknown';
+            displayTitle = transaction.description || `Received from ${transaction.counterparty || 'Unknown'}`;
+            displaySubtitle = `From: ${senderName}`;
+          } else if (transaction.type === 'transfer' || transaction.type === 'sent') {
+            // For sent: recipient_name contains the RECIPIENT's name
+            const recipientName = transaction.recipient_name || 'Unknown';
+            displayTitle = transaction.description || `Transfer to ${recipientName}`;
+            displaySubtitle = `To: ${recipientName}`;
+          } else if (transaction.type === 'bill') {
+            displayTitle = transaction.description || 'Paid bill';
+            displaySubtitle = `To: ${transaction.counterparty || 'Unknown'}`;
+          } else {
+            displayTitle = transaction.description || 'Transaction';
+            displaySubtitle = `To: ${transaction.counterparty || 'Unknown'}`;
+          }
+          
           return (
             <TouchableOpacity 
               key={transaction.id} 
@@ -124,34 +184,28 @@ export default function TransactionScreen({ navigation }) {
               <View 
                 style={[
                   styles.iconContainer,
-                  { backgroundColor: bg }
+                  { backgroundColor: iconData.bg }
                 ]}
               >
-                <Ionicons name={icon} size={24} color={color} />
+                <Ionicons name={iconData.icon} size={24} color={iconData.color} />
               </View>
               <View style={styles.transactionContent}>
                 <View style={styles.transactionInfo}>
                   <Text style={styles.transactionTitle}>
-                    {transaction.type === 'transfer'
-                      ? `Transfer to ${transaction.recipient_name || transaction.counterparty}`
-                      : transaction.description || (isIncome ? 'Money Received' : 'Money Sent')}
+                    {displayTitle}
                   </Text>
                   <Text style={styles.transactionSubtitle}>
-                    {isIncome
-                      ? `From: ${transaction.counterparty || 'Unknown'}`
-                      : transaction.type === 'transfer'
-                        ? `To: ${transaction.recipient_name || transaction.counterparty || 'Unknown'}`
-                        : `To: ${transaction.counterparty || 'Unknown'}`}
+                    {displaySubtitle}
                   </Text>
                 </View>
                 <View style={styles.transactionDetails}>
                   <Text 
                     style={[
                       styles.transactionAmount,
-                      isIncome ? styles.incomeAmount : styles.expenseAmount
+                      displayAmount >= 0 ? styles.incomeAmount : styles.expenseAmount
                     ]}
                   >
-                    {isIncome ? '+' : '-'}₱{Math.abs(Number(transaction.amount)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {displayAmount >= 0 ? '+' : '-'}₱{Math.abs(displayAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                   <Text style={styles.transactionDate}>
                     {new Date(transaction.created_at).toLocaleString()}
@@ -189,15 +243,17 @@ export default function TransactionScreen({ navigation }) {
             <Text style={styles.receiptTitle}>Transaction Receipt</Text>
             <View style={styles.receiptRow}>
               <Text style={styles.receiptLabel}>Type:</Text>
-              <Text style={styles.receiptValue}>{selectedTransaction?.type?.toUpperCase()}</Text>
+              <Text style={styles.receiptValue}>
+                {Number(selectedTransaction?.amount) > 0 || selectedTransaction?.type === 'received' ? 'RECEIVED' : selectedTransaction?.type?.toUpperCase()}
+              </Text>
             </View>
             <View style={styles.receiptRow}>
               <Text style={styles.receiptLabel}>Amount:</Text>
               <Text style={[
                 styles.receiptValue,
-                Number(selectedTransaction?.amount) >= 0 ? styles.incomeAmount : styles.expenseAmount
+                (Number(selectedTransaction?.amount) > 0 || selectedTransaction?.type === 'received') ? styles.incomeAmount : styles.expenseAmount
               ]}>
-                {Number(selectedTransaction?.amount) >= 0 ? '+' : '-'}₱{Math.abs(Number(selectedTransaction?.amount)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {(Number(selectedTransaction?.amount) > 0 || selectedTransaction?.type === 'received') ? '+' : '-'}₱{Math.abs(Number(selectedTransaction?.amount)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
             </View>
             <View style={styles.receiptRow}>
@@ -205,17 +261,11 @@ export default function TransactionScreen({ navigation }) {
               <Text style={styles.receiptValue}>{selectedTransaction ? new Date(selectedTransaction.created_at).toLocaleString() : ''}</Text>
             </View>
             <View style={styles.receiptRow}>
-              <Text style={styles.receiptLabel}>Description:</Text>
-              <Text style={styles.receiptValue}>{selectedTransaction?.description || '-'}</Text>
-            </View>
-            <View style={styles.receiptRow}>
               <Text style={styles.receiptLabel}>
-                {selectedTransaction?.type === 'received' ? 'From:' : 'To:'}
+                {(Number(selectedTransaction?.amount) > 0 || selectedTransaction?.type === 'received') ? 'From:' : 'To:'}
               </Text>
               <Text style={styles.receiptValue}>
-                {selectedTransaction?.type === 'transfer'
-                  ? selectedTransaction?.recipient_name || selectedTransaction?.counterparty
-                  : selectedTransaction?.counterparty || '-'}
+                {selectedTransaction?.recipient_name || selectedTransaction?.counterparty || '-'}
               </Text>
             </View>
             <TouchableOpacity
@@ -237,7 +287,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   headerGradient: {
-    paddingTop: 40,
+    paddingTop: 20,
     paddingBottom: 20,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,

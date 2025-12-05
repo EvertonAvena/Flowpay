@@ -19,13 +19,6 @@ export default function NotificationScreen({ navigation }) {
   const [bills, setBills] = useState([]);
   const [loadingBills, setLoadingBills] = useState(false);
 
-  // static fallback notifications for other types
-  useEffect(() => {
-    setNotifications([
-      { id: 'n1', title: 'Payment Received', message: 'You have received ₱50.00 from John Doe', time: '2 hours ago', isRead: false, type: 'transaction' },
-    ]);
-  }, []);
-
   useEffect(() => {
     // fetch bills when screen is focused
     const unsubscribe = navigation.addListener('focus', () => {
@@ -237,7 +230,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   headerGradient: {
-    paddingTop: 40,
+    paddingTop: 20,
     paddingBottom: 20,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,

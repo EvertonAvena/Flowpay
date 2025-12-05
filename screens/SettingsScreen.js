@@ -281,7 +281,7 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         {/* Notification Settings */}
-        <View style={styles.section}>
+        {/* <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notifications</Text>
           
           <View style={styles.settingItem}>
@@ -347,10 +347,10 @@ export default function SettingsScreen({ navigation }) {
               thumbColor={promotionalEmails ? '#179C7D' : '#f3f4f6'}
             />
           </View>
-        </View>
+        </View> */}
 
         {/* Privacy Settings */}
-        <View style={styles.section}>
+        {/* <View style={styles.section}>
           <Text style={styles.sectionTitle}>Privacy</Text>
           
           <View style={styles.settingItem}>
@@ -400,10 +400,10 @@ export default function SettingsScreen({ navigation }) {
               thumbColor={showOnlineStatus ? '#179C7D' : '#f3f4f6'}
             />
           </View>
-        </View>
+        </View> */}
 
         {/* Security Options */}
-        <View style={styles.section}>
+        {/* <View style={styles.section}>
           <Text style={styles.sectionTitle}>Security Options</Text>
           
           <View style={styles.settingItem}>
@@ -453,10 +453,10 @@ export default function SettingsScreen({ navigation }) {
               thumbColor={loginAlerts ? '#179C7D' : '#f3f4f6'}
             />
           </View>
-        </View>
+        </View> */}
 
         {/* Danger Zone */}
-        <View style={styles.section}>
+        {/* <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: '#DC2626' }]}>Danger Zone</Text>
           
           <TouchableOpacity 
@@ -474,7 +474,7 @@ export default function SettingsScreen({ navigation }) {
             </View>
             <Ionicons name="chevron-forward" size={22} color="#DC2626" />
           </TouchableOpacity>
-        </View>
+        </View> */}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -507,6 +507,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
+    paddingTop: 35,
   },
   backButton: {
     padding: 5,
